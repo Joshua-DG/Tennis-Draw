@@ -39,7 +39,7 @@
         }
         nav button.active { color: #2b6cb0; border-bottom-color: #2b6cb0; }
         nav button:hover:not(.active) { background: #f7fafc; }
-        main { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
+        main { max-width: 1400px; margin: 0 auto; padding: 20px 16px; }
         .panel { display: none; }
         .panel.active { display: block; }
         .card {
@@ -270,13 +270,6 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>대진 방식</label>
-                    <select id="s-match" onchange="setSetting('matching', this.value)">
-                        <option value="balanced">균형 (NTRP 기반)</option>
-                        <option value="random">랜덤</option>
-                    </select>
-                </div>
-                <div class="field">
                     <label>시작 시간</label>
                     <input id="s-starttime" type="time" value="10:00"
                         onchange="setSetting('startTime', this.value); updateTimePreview()">
@@ -297,6 +290,17 @@
                     <label>종료 시간</label>
                     <input id="s-endtime" type="time" value="12:00"
                         onchange="setSetting('endTime', this.value); updateTimePreview()">
+                </div>
+                <div class="field">
+                    <label>몸풀기 시간</label>
+                    <select id="s-warmup" onchange="setSetting('warmupMins', +this.value); updateTimePreview()">
+                        <option value="0">없음</option>
+                        <option value="5">5분</option>
+                        <option value="10">10분</option>
+                        <option value="15">15분</option>
+                        <option value="20">20분</option>
+                        <option value="30">30분</option>
+                    </select>
                 </div>
             </div>
             <div id="time-preview" class="preview-box preview-gray">종료 시간을 설정하면 총 라운드 수를 확인할 수 있습니다.</div>
@@ -375,8 +379,8 @@ let rounds    = [];
 let nextId    = 1;
 let editingId = null;
 let cfg = {
-    courts: 2, gameType: 'doubles', matching: 'balanced',
-    startTime: '10:00', gameMins: 30, endTime: '12:00',
+    courts: 2, gameType: 'doubles',
+    startTime: '10:00', gameMins: 30, endTime: '12:00', warmupMins: 0,
     ratioMM: 1, ratioFF: 1, ratioMF: 2
 };
 
@@ -396,10 +400,10 @@ function hydrate() {
         cfg     = { ...cfg, ...(d.cfg || {}) };
         document.getElementById('s-courts').value    = cfg.courts;
         document.getElementById('s-type').value      = cfg.gameType;
-        document.getElementById('s-match').value     = cfg.matching;
         document.getElementById('s-starttime').value = cfg.startTime;
         document.getElementById('s-gamemins').value  = cfg.gameMins;
         document.getElementById('s-endtime').value   = cfg.endTime || '';
+        document.getElementById('s-warmup').value    = cfg.warmupMins || 0;
         document.getElementById('s-ratiomm').value   = cfg.ratioMM;
         document.getElementById('s-ratioff').value   = cfg.ratioFF;
         document.getElementById('s-ratiomf').value   = cfg.ratioMF;
@@ -430,7 +434,7 @@ function calcTotalRounds() {
     if (!cfg.endTime || !cfg.startTime) return 0;
     const [sh, sm] = cfg.startTime.split(':').map(Number);
     const [eh, em] = cfg.endTime.split(':').map(Number);
-    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    const diff = (eh * 60 + em) - (sh * 60 + sm) - (cfg.warmupMins || 0);
     return diff > 0 ? Math.floor(diff / (cfg.gameMins || 30)) : 0;
 }
 function updateTimePreview() {
@@ -449,7 +453,8 @@ function updateTimePreview() {
         if (btn) btn.textContent = '⏭ 전체 생성';
         return;
     }
-    el.textContent = `${cfg.startTime} ~ ${cfg.endTime}  ·  ${cfg.gameMins}분/게임  →  총 ${total}라운드`;
+    const warmupNote = cfg.warmupMins > 0 ? `  ·  몸풀기 ${cfg.warmupMins}분` : '';
+    el.textContent = `${cfg.startTime} ~ ${cfg.endTime}${warmupNote}  ·  ${cfg.gameMins}분/게임  →  총 ${total}라운드`;
     el.className = 'preview-box preview-blue';
     if (btn) btn.textContent = `⏭ 전체 생성 (총 ${total}라운드)`;
 }
@@ -556,13 +561,8 @@ function prioritySorted(gender) {
 }
 
 function makeMatch(courtNum, type, group) {
-    if (cfg.matching === 'balanced') {
-        const s = [...group].sort((a, b) => b.ntrp - a.ntrp);
-        if (s.length === 4) return { court: courtNum, type, a: [s[0].id, s[3].id], b: [s[1].id, s[2].id] };
-        return { court: courtNum, type, a: [s[0].id], b: [s[1].id] };
-    }
-    const s = [...group].sort(() => Math.random() - 0.5);
-    if (s.length === 4) return { court: courtNum, type, a: [s[0].id, s[1].id], b: [s[2].id, s[3].id] };
+    const s = [...group].sort((a, b) => b.ntrp - a.ntrp);
+    if (s.length === 4) return { court: courtNum, type, a: [s[0].id, s[3].id], b: [s[1].id, s[2].id] };
     return { court: courtNum, type, a: [s[0].id], b: [s[1].id] };
 }
 
@@ -722,7 +722,7 @@ function fmtTime(totalMins) {
 }
 function roundTimeSlot(roundIndex) {
     const [h, m] = (cfg.startTime || '10:00').split(':').map(Number);
-    const start = h * 60 + m + roundIndex * (cfg.gameMins || 30);
+    const start = h * 60 + m + (cfg.warmupMins || 0) + roundIndex * (cfg.gameMins || 30);
     return `${fmtTime(start)} ~ ${fmtTime(start + (cfg.gameMins || 30))}`;
 }
 
@@ -809,6 +809,18 @@ function renderSchedule() {
 
     const courtHeaders = Array.from({ length: maxCourts }, (_, i) => `<th>코트 ${i + 1}</th>`).join('');
 
+    let warmupRow = '';
+    if (cfg.warmupMins > 0) {
+        const [h, m] = (cfg.startTime || '10:00').split(':').map(Number);
+        const wStart = fmtTime(h * 60 + m);
+        const wEnd   = fmtTime(h * 60 + m + cfg.warmupMins);
+        warmupRow = `<tr style="background:#fffbeb">
+            <td style="text-align:center;color:#b7791f;font-weight:700">-</td>
+            <td style="white-space:nowrap;color:#4a5568;font-size:13px">${wStart} ~ ${wEnd}</td>
+            <td colspan="${maxCourts + 1}" style="color:#b7791f;font-weight:600;font-size:13px">몸풀기 ${cfg.warmupMins}분</td>
+        </tr>`;
+    }
+
     const rows = rounds.map(r => {
         const timeSlot = roundTimeSlot(r.id - 1);
 
@@ -843,7 +855,7 @@ function renderSchedule() {
                 ${courtHeaders}
                 <th>대기</th>
             </tr></thead>
-            <tbody>${rows}</tbody>
+            <tbody>${warmupRow}${rows}</tbody>
         </table>
         </div>`;
 }
