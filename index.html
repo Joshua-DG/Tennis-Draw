@@ -240,8 +240,17 @@
                         <option>6.5</option><option>7.0</option>
                     </select>
                 </div>
+                <div class="field" style="flex:0 0 auto;min-width:88px">
+                    <label>참여 시작</label>
+                    <input id="p-avail-from" type="time" placeholder="" title="미입력 시 세션 시작부터">
+                </div>
+                <div class="field" style="flex:0 0 auto;min-width:88px">
+                    <label>참여 종료</label>
+                    <input id="p-avail-until" type="time" placeholder="" title="미입력 시 세션 종료까지">
+                </div>
                 <button class="btn btn-primary" style="align-self:flex-end" onclick="addPlayer()">+ 추가</button>
             </div>
+            <div style="font-size:12px;color:#a0aec0;margin-top:8px">참여 시작·종료는 전체 참여가 아닌 경우에만 입력하세요.</div>
         </div>
         <div class="card">
             <div class="flex-between" style="margin-bottom:16px">
@@ -496,13 +505,16 @@ function addPlayer() {
     const name = document.getElementById('p-name').value.trim();
     if (!name) { alert('이름을 입력해주세요.'); return; }
     players.push({
-        id:     nextId++,
+        id:         nextId++,
         name,
-        gender: document.getElementById('p-gender').value,
-
-        ntrp:   +(document.getElementById('p-ntrp').value)
+        gender:     document.getElementById('p-gender').value,
+        ntrp:       +(document.getElementById('p-ntrp').value),
+        availFrom:  document.getElementById('p-avail-from').value  || null,
+        availUntil: document.getElementById('p-avail-until').value || null,
     });
     document.getElementById('p-name').value = '';
+    document.getElementById('p-avail-from').value  = '';
+    document.getElementById('p-avail-until').value = '';
     persist();
     renderPlayers();
 }
@@ -531,10 +543,11 @@ function savePlayer(id) {
     if (!p) return;
     const name = document.getElementById('edit-name').value.trim();
     if (!name) { alert('이름을 입력해주세요.'); return; }
-    p.name   = name;
-    p.gender = document.getElementById('edit-gender').value;
-
-    p.ntrp   = +(document.getElementById('edit-ntrp').value);
+    p.name       = name;
+    p.gender     = document.getElementById('edit-gender').value;
+    p.ntrp       = +(document.getElementById('edit-ntrp').value);
+    p.availFrom  = document.getElementById('edit-avail-from').value  || null;
+    p.availUntil = document.getElementById('edit-avail-until').value || null;
     editingId = null;
     persist();
     renderPlayers();
@@ -548,10 +561,15 @@ function inMatch(pid, round) {
     return round.matches.some(m => m.a.includes(pid) || m.b.includes(pid));
 }
 function gameCnt(pid) { return rounds.filter(r => inMatch(pid, r)).length; }
-function restCnt(pid) { return rounds.filter(r => !inMatch(pid, r)).length; }
+function restCnt(pid) {
+    const p = players.find(q => q.id === pid);
+    return rounds.filter((r, i) => !inMatch(pid, r) && (!p || isAvailable(p, i))).length;
+}
 function consRests(pid) {
+    const p = players.find(q => q.id === pid);
     let n = 0;
     for (let i = rounds.length - 1; i >= 0; i--) {
+        if (p && !isAvailable(p, i)) continue;
         if (!inMatch(pid, rounds[i])) n++; else break;
     }
     return n;
@@ -560,9 +578,10 @@ function consRests(pid) {
 // ──────────────────────────────────────────────
 // Round generation
 // ──────────────────────────────────────────────
-function prioritySorted(gender) {
+function prioritySorted(gender, roundIndex) {
+    const ri = roundIndex ?? rounds.length;
     return players
-        .filter(p => gender == null || p.gender === gender)
+        .filter(p => (gender == null || p.gender === gender) && isAvailable(p, ri))
         .sort((a, b) =>
             consRests(b.id) - consRests(a.id) ||
             gameCnt(a.id)   - gameCnt(b.id)   ||
@@ -686,10 +705,12 @@ function tryBreakDuplicateMF(playM, mStart, playF, fStart, benchM, benchF) {
 
 function genDoublesRoundInternal() {
     if (players.length < 4) { alert('최소 4명이 필요합니다.'); return false; }
-    const males   = prioritySorted('M');
-    const females = prioritySorted('F');
-    const maxCourts = Math.min(cfg.courts, Math.floor(players.length / 4));
-    if (maxCourts === 0) { alert('최소 4명이 필요합니다.'); return false; }
+    const roundIndex = rounds.length;
+    const males   = prioritySorted('M', roundIndex);
+    const females = prioritySorted('F', roundIndex);
+    const avail   = males.length + females.length;
+    const maxCourts = Math.min(cfg.courts, Math.floor(avail / 4));
+    if (maxCourts === 0) { alert('이 라운드에 참여 가능한 인원이 부족합니다.'); return false; }
     const dist = calcCourtDist(maxCourts, males.length, females.length);
     const mNeeded = dist.mm * 4 + dist.mf * 2;
     const fNeeded = dist.ff * 4 + dist.mf * 2;
@@ -707,7 +728,8 @@ function genDoublesRoundInternal() {
         tryBreakDuplicateMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
 
     const activeIds = new Set([...playM, ...playF].map(p => p.id));
-    const sitting   = players.filter(p => !activeIds.has(p.id));
+    // sitting = available this round but not playing
+    const sitting = players.filter(p => isAvailable(p, roundIndex) && !activeIds.has(p.id));
     const matches = [];
     let cn = 1;
     for (let i = 0; i < dist.mm; i++)
@@ -724,7 +746,8 @@ function genDoublesRoundInternal() {
 
 function genSinglesRoundInternal() {
     if (players.length < 2) { alert('최소 2명이 필요합니다.'); return false; }
-    const sorted = prioritySorted(null);
+    const roundIndex = rounds.length;
+    const sorted = prioritySorted(null, roundIndex);
     const maxCourts = Math.min(cfg.courts, Math.floor(sorted.length / 2));
     const active  = sorted.slice(0, maxCourts * 2);
     const sitting = sorted.slice(maxCourts * 2);
@@ -773,7 +796,7 @@ function genAllRounds() {
 
 function delLastRound() {
     if (!rounds.length) return;
-    if (!confirm(`라운드 ${rounds.length} 기록을 삭제할까요?`)) return;
+    if (!confirm(`라운드 ${rounds.length} 대진을 삭제할까요?`)) return;
     rounds.pop();
     persist();
     renderSchedule();
@@ -795,9 +818,21 @@ function fmtTime(totalMins) {
     const m = totalMins % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
+function timeToMins(t) {
+    const [h, m] = (t || '00:00').split(':').map(Number);
+    return h * 60 + m;
+}
+function roundStartMins(roundIndex) {
+    return timeToMins(cfg.startTime || '10:00') + (cfg.warmupMins || 0) + roundIndex * (cfg.gameMins || 30);
+}
+function isAvailable(player, roundIndex) {
+    const start = roundStartMins(roundIndex);
+    const from  = player.availFrom  ? timeToMins(player.availFrom)  : timeToMins(cfg.startTime || '00:00');
+    const until = player.availUntil ? timeToMins(player.availUntil) : timeToMins(cfg.endTime   || '23:59');
+    return start >= from && start < until;
+}
 function roundTimeSlot(roundIndex) {
-    const [h, m] = (cfg.startTime || '10:00').split(':').map(Number);
-    const start = h * 60 + m + (cfg.warmupMins || 0) + roundIndex * (cfg.gameMins || 30);
+    const start = roundStartMins(roundIndex);
     return `${fmtTime(start)} ~ ${fmtTime(start + (cfg.gameMins || 30))}`;
 }
 
@@ -839,9 +874,13 @@ function renderPlayers() {
         .map(n => `<option value="${n}"${+n === v ? ' selected' : ''}>${n}</option>`).join('');
     el.innerHTML = `
         <div class="table-wrap"><table>
-            <thead><tr><th>이름</th><th>성별</th><th>NTRP</th><th></th></tr></thead>
+            <thead><tr><th>이름</th><th>성별</th><th>NTRP</th><th>참여 시간</th><th></th></tr></thead>
             <tbody>
             ${players.map(p => {
+                const hasLimit = p.availFrom || p.availUntil;
+                const availLabel = hasLimit
+                    ? `<span style="font-size:11px;background:#fefcbf;color:#744210;padding:2px 7px;border-radius:10px;font-weight:600">${p.availFrom||'시작'}~${p.availUntil||'종료'}</span>`
+                    : `<span style="font-size:12px;color:#a0aec0">전체</span>`;
                 if (p.id === editingId) return `
                     <tr class="editing-row">
                         <td><input id="edit-name" type="text" value="${esc(p.name)}" style="width:100%;min-width:80px"
@@ -851,6 +890,11 @@ function renderPlayers() {
                             <option value="F"${p.gender==='F'?' selected':''}>여</option>
                         </select></td>
                         <td><select id="edit-ntrp">${ntrpOpts(p.ntrp)}</select></td>
+                        <td style="white-space:nowrap">
+                            <input id="edit-avail-from"  type="time" value="${p.availFrom||''}"  style="width:100px" title="참여 시작">
+                            <span style="color:#a0aec0;font-size:11px">~</span>
+                            <input id="edit-avail-until" type="time" value="${p.availUntil||''}" style="width:100px" title="참여 종료">
+                        </td>
                         <td style="white-space:nowrap;display:flex;gap:6px">
                             <button class="btn btn-primary btn-sm" onclick="savePlayer(${p.id})">저장</button>
                             <button class="btn btn-gray btn-sm" onclick="cancelEdit()">취소</button>
@@ -861,6 +905,7 @@ function renderPlayers() {
                         <td><strong>${esc(p.name)}</strong></td>
                         <td><span class="badge badge-${p.gender.toLowerCase()}">${p.gender==='M'?'남':'여'}</span></td>
                         <td>${p.ntrp}</td>
+                        <td>${availLabel}</td>
                         <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();removePlayer(${p.id})">삭제</button></td>
                     </tr>`;
             }).join('')}
@@ -953,15 +998,19 @@ function renderStats() {
         <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>이름</th><th>성별</th><th>게임 횟수</th><th>대기 횟수</th><th>연속 대기</th></tr>
+                <tr><th>이름</th><th>성별</th><th>참여 시간</th><th>게임 횟수</th><th>대기 횟수</th><th>연속 대기</th></tr>
             </thead>
             <tbody>
             ${sorted.map(p => {
                 const g = gameCnt(p.id), rs = restCnt(p.id), cr = consRests(p.id);
+                const availCell = (p.availFrom || p.availUntil)
+                    ? `<span style="font-size:11px;background:#fefcbf;color:#744210;padding:2px 7px;border-radius:10px;font-weight:600">${p.availFrom||'시작'}~${p.availUntil||'종료'}</span>`
+                    : `<span style="font-size:12px;color:#a0aec0">전체</span>`;
                 return `
                     <tr${cr >= 2 ? ' style="background:#fff5f5"' : ''}>
                         <td><strong>${esc(p.name)}</strong></td>
                         <td><span class="badge badge-${p.gender.toLowerCase()}">${p.gender === 'M' ? '남' : '여'}</span></td>
+                        <td>${availCell}</td>
                         <td>${g}회</td>
                         <td>${rs}회</td>
                         <td>${cr >= 2 ? `<span class="stat-warn-text">⚠ ${cr}회 연속</span>` : cr === 1 ? `${cr}회` : '-'}</td>
