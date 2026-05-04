@@ -89,6 +89,8 @@
         .btn-red:hover { background: #c53030; }
         .btn-gray { background: #edf2f7; color: #4a5568; }
         .btn-gray:hover { background: #e2e8f0; }
+        .btn-outline { background: white; color: #4a5568; border: 1.5px solid #cbd5e0; }
+        .btn-outline:hover { border-color: #718096; color: #2d3748; }
         .btn-sm { padding: 5px 12px; font-size: 12px; }
         .table-wrap { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -386,9 +388,9 @@
             <button id="btn-gen-all" class="btn btn-teal" style="flex:1;padding:13px;font-size:15px;min-width:140px" onclick="genAllRounds()">⏭ 전체 생성</button>
         </div>
         <div class="sched-toolbar" style="margin-top:-6px">
-            <button class="btn btn-gray" onclick="delLastRound()">↩ 마지막 삭제</button>
-            <button class="btn btn-gray btn-sm" onclick="copySchedule()">📸 이미지 복사</button>
-            <button class="btn btn-red btn-sm" onclick="resetRounds()">🗑 전체 초기화</button>
+            <button class="btn btn-outline" onclick="delLastRound()">↩ 마지막 삭제</button>
+            <button class="btn btn-outline" style="padding-left:10px" onclick="copySchedule()">📸 이미지 복사</button>
+            <button class="btn btn-red" onclick="resetRounds()">🗑 전체 초기화</button>
         </div>
         <div style="font-size:12px;color:#718096;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;padding:7px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:4px">
             <div>✏️ <strong>셀 클릭</strong> — 해당 코트 선수 전체 수정</div>
@@ -1176,7 +1178,7 @@ function renderSchedule() {
 
     const maxCourts = Math.max(...rounds.map(r => r.matches.length));
 
-    const courtHeaders = Array.from({ length: maxCourts }, (_, i) => `<th>코트 ${i + 1}</th>`).join('');
+    const courtHeaders = Array.from({ length: maxCourts }, (_, i) => `<th style="text-align:center">코트 ${i + 1}</th>`).join('');
 
     let warmupRow = '';
     if (cfg.warmupMins > 0) {
@@ -1207,7 +1209,7 @@ function renderSchedule() {
             };
             const aChips = m.a.map((id, pi) => chip('a', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
             const bChips = m.b.map((id, pi) => chip('b', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
-            return `<td class="court-cell" style="white-space:nowrap" onclick="openMatchEdit(${r.id},${mi})" title="선수를 드래그해 위치 교체 / 셀 클릭으로 수정">${pill}${aChips}<span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span>${bChips}</td>`;
+            return `<td class="court-cell" style="white-space:nowrap;text-align:center" onclick="openMatchEdit(${r.id},${mi})" title="선수를 드래그해 위치 교체 / 셀 클릭으로 수정">${pill}${aChips}<span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span>${bChips}</td>`;
         }).join('');
 
         const sitStr = r.sit.length
@@ -1216,9 +1218,9 @@ function renderSchedule() {
 
         return `<tr>
             <td style="text-align:center;font-weight:700;color:#2b6cb0">${r.id}</td>
-            <td style="white-space:nowrap;color:#4a5568;font-size:13px">${timeSlot}</td>
+            <td style="white-space:nowrap;color:#4a5568;font-size:13px;text-align:center">${timeSlot}</td>
             ${courtCells}
-            <td style="color:#718096;font-size:13px">${sitStr}</td>
+            <td style="color:#718096;font-size:13px;text-align:center">${sitStr}</td>
         </tr>`;
     }).join('');
 
@@ -1227,9 +1229,9 @@ function renderSchedule() {
         <table>
             <thead><tr>
                 <th style="text-align:center">R</th>
-                <th>시간</th>
+                <th style="text-align:center">시간</th>
                 ${courtHeaders}
-                <th>대기</th>
+                <th style="text-align:center">대기</th>
             </tr></thead>
             <tbody>${warmupRow}${rows}</tbody>
         </table>
