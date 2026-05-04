@@ -752,7 +752,9 @@ function typePill(type) {
 // Render: Players
 // ──────────────────────────────────────────────
 function renderPlayers() {
-    document.getElementById('p-count').textContent = `(${players.length}명)`;
+    const mCount = players.filter(p => p.gender === 'M').length;
+    const fCount = players.filter(p => p.gender === 'F').length;
+    document.getElementById('p-count').textContent = `(${players.length}명 · 남 ${mCount}명 · 여 ${fCount}명)`;
     const el = document.getElementById('p-list');
     if (!players.length) {
         el.innerHTML = `<div class="empty"><div class="empty-icon">🎾</div><div class="empty-text">참가자를 추가해주세요</div></div>`;
