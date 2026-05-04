@@ -346,6 +346,7 @@
                 </div>
             </div>
             <div class="ratio-pills" id="ratio-preview"></div>
+            <div id="ratio-suggest"></div>
         </div>
 
         <div class="card">
@@ -485,6 +486,7 @@ function updateRatioPreview() {
     const mf = Math.max(0, cfg.ratioMF || 0);
     if (mm + ff + mf === 0) {
         el.innerHTML = '<span style="color:#a0aec0;font-size:13px">비율을 1 이상으로 설정해주세요.</span>';
+        updateRatioSuggest();
         return;
     }
     const parts = [];
@@ -492,10 +494,81 @@ function updateRatioPreview() {
     if (ff > 0) parts.push(`<span class="ratio-pill ct-ff">여복 ${ff}</span>`);
     if (mf > 0) parts.push(`<span class="ratio-pill ct-mf">혼합 ${mf}</span>`);
     el.innerHTML = parts.join('<span class="ratio-sep"> : </span>');
+    updateRatioSuggest();
 }
 function updateRatioCard() {
     const card = document.getElementById('ratio-card');
     if (card) card.style.display = cfg.gameType === 'doubles' ? '' : 'none';
+}
+
+function suggestRatio() {
+    const M = players.filter(p => p.gender === 'M').length;
+    const F = players.filter(p => p.gender === 'F').length;
+    if (M + F < 4) return null;
+    if (M === 0) return F >= 4 ? { mm: 0, ff: 1, mf: 0, M, F } : null;
+    if (F === 0) return M >= 4 ? { mm: 1, ff: 0, mf: 0, M, F } : null;
+    const canMM = M >= 4, canFF = F >= 4, canMF = M >= 2 && F >= 2;
+    let best = null, bestScore = Infinity, bestZeros = 3, bestSum = Infinity, bestMax = Infinity;
+    for (let mm = 0; mm <= 5; mm++) {
+        if (mm > 0 && !canMM) continue;
+        for (let ff = 0; ff <= 5; ff++) {
+            if (ff > 0 && !canFF) continue;
+            for (let mf = 0; mf <= 5; mf++) {
+                if (mf > 0 && !canMF) continue;
+                if (mm + ff + mf === 0) continue;
+                const ms = 4*mm + 2*mf, fs = 4*ff + 2*mf;
+                if (ms === 0 || fs === 0) continue;
+                const score = Math.abs(ms * F - fs * M);
+                const zeros = (mm===0?1:0) + (ff===0?1:0) + (mf===0?1:0);
+                const sum   = mm + ff + mf;
+                const mx    = Math.max(mm, ff, mf);
+                if (score < bestScore ||
+                    (score === bestScore && zeros < bestZeros) ||
+                    (score === bestScore && zeros === bestZeros && sum < bestSum) ||
+                    (score === bestScore && zeros === bestZeros && sum === bestSum && mx < bestMax)) {
+                    best = { mm, ff, mf, M, F };
+                    bestScore = score; bestZeros = zeros; bestSum = sum; bestMax = mx;
+                }
+            }
+        }
+    }
+    return best;
+}
+
+function updateRatioSuggest() {
+    const el = document.getElementById('ratio-suggest');
+    if (!el) return;
+    const M = players.filter(p => p.gender === 'M').length;
+    const F = players.filter(p => p.gender === 'F').length;
+    if (M + F < 4) { el.innerHTML = ''; return; }
+    const s = suggestRatio();
+    if (!s) { el.innerHTML = ''; return; }
+    // Check if current ratio is already equivalent (same balance score = 0)
+    const mm = cfg.ratioMM || 0, ff = cfg.ratioFF || 0, mf = cfg.ratioMF || 0;
+    if (M > 0 && F > 0) {
+        const curScore = Math.abs((4*mm + 2*mf) * F - (4*ff + 2*mf) * M);
+        if (curScore === 0) {
+            el.innerHTML = `<div style="margin-top:10px;font-size:13px;color:#38a169">✓ 현재 비율이 균등합니다</div>`;
+            return;
+        }
+    }
+    const parts = [];
+    if (s.mm > 0) parts.push(`남복 ${s.mm}`);
+    if (s.ff > 0) parts.push(`여복 ${s.ff}`);
+    if (s.mf > 0) parts.push(`혼합 ${s.mf}`);
+    el.innerHTML = `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:13px;color:#718096">💡 남 ${M}명·여 ${F}명 기준 추천: <strong>${parts.join(' : ')}</strong></span>
+        <button class="btn btn-sm btn-gray" onclick="applyRatioSuggest(${s.mm},${s.ff},${s.mf})">적용</button>
+    </div>`;
+}
+
+function applyRatioSuggest(mm, ff, mf) {
+    cfg.ratioMM = mm; cfg.ratioFF = ff; cfg.ratioMF = mf;
+    persist();
+    document.getElementById('s-ratiomm').value = mm;
+    document.getElementById('s-ratioff').value = ff;
+    document.getElementById('s-ratiomf').value = mf;
+    updateRatioPreview();
 }
 
 // ──────────────────────────────────────────────
@@ -915,6 +988,7 @@ function renderPlayers() {
         const input = document.getElementById('edit-name');
         if (input) { input.focus(); input.select(); }
     }
+    updateRatioSuggest();
 }
 
 // ──────────────────────────────────────────────
