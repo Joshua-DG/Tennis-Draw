@@ -168,10 +168,14 @@
         .preview-red  { background: #fff5f5; color: #e53e3e; }
         .preview-gray { background: #f7fafc; color: #a0aec0; }
         .ratio-pills { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
-        .time-split { display: flex; align-items: center; gap: 2px; padding: 5px 8px; border: 1.5px solid #e2e8f0; border-radius: 7px; background: white; }
+        .time-split { display: flex; align-items: center; gap: 2px; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 7px; background: white; }
         .time-split:focus-within { border-color: #2b6cb0; box-shadow: 0 0 0 3px rgba(43,108,176,0.1); }
         .time-split select { border: none; outline: none; background: transparent; font-size: 14px; color: #2d3748; padding: 0; cursor: pointer; }
         .time-split .sep { color: #a0aec0; font-size: 13px; padding: 0 1px; }
+        .player-chip { display: inline-block; cursor: grab; padding: 1px 5px; border-radius: 4px; transition: background 0.1s; }
+        .player-chip:hover { background: #ebf8ff; }
+        .player-chip.drag-src { opacity: 0.4; }
+        .player-chip.drag-over { background: #bee3f8; outline: 2px dashed #2b6cb0; border-radius: 4px; }
         .ratio-pill { padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
         .ratio-sep { color: #a0aec0; font-weight: 700; }
 
@@ -262,7 +266,7 @@
                 </div>
                 <button class="btn btn-primary" style="align-self:flex-end" onclick="addPlayer()">+ 추가</button>
             </div>
-            <div style="font-size:12px;color:#a0aec0;margin-top:8px">참여 시작·종료는 전체 참여가 아닌 경우에만 입력하세요.</div>
+            <div style="font-size:12px;color:#4a5568;background:#fffbeb;border:1px solid #f6e05e;border-radius:6px;padding:6px 10px;margin-top:8px">⚠️ 참여 시작·종료는 <strong>전체 참여가 아닌 경우에만</strong> 입력하세요. 미입력 시 세션 전체 참여로 처리됩니다.</div>
         </div>
         <div class="card">
             <div class="flex-between" style="margin-bottom:16px">
@@ -369,6 +373,7 @@
                 <li>③ <strong>코트별 수준 배분</strong> — NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</li>
                 <li>④ <strong>팀 내 밸런스</strong> — (1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</li>
                 <li>⑤ <strong>중복 매치 방지</strong> — 동일한 4명이 같은 코트에 다시 배정되지 않도록 대기 선수와 교체합니다</li>
+                <li>⑥ <strong>페어 다양성</strong> — 같은 선수와 자주 같은 코트에 배정되지 않도록 대기 선수와 교체해 최대한 다양한 조합을 만듭니다</li>
             </ul>
         </div>
 
@@ -452,17 +457,18 @@ function buildHourOpts(selected) {
     return html;
 }
 function buildMinOpts(selected) {
-    return ['00','10','20','30','40','50']
-        .map(m => `<option value="${m}"${m === selected ? ' selected' : ''}>${m}</option>`).join('');
+    return ['','00','10','20','30','40','50']
+        .map(m => `<option value="${m}"${m === selected ? ' selected' : ''}>${m || '--'}</option>`).join('');
 }
 function getAvailTime(prefix) {
     const h = document.getElementById(prefix + '-h').value;
     if (!h) return null;
-    return `${h}:${document.getElementById(prefix + '-m').value}`;
+    const m = document.getElementById(prefix + '-m').value;
+    return `${h}:${m || '00'}`;
 }
 function setAvailTime(prefix) {
     document.getElementById(prefix + '-h').value = '';
-    document.getElementById(prefix + '-m').value = '00';
+    document.getElementById(prefix + '-m').value = '';
 }
 
 
@@ -757,6 +763,68 @@ function calcCourtDist(maxCourts, mAvail, fAvail) {
     return { mm: best.mm, ff: best.ff, mf: best.mf };
 }
 
+// Count how many past rounds two players appeared on the same court (any team)
+function coPlayCount(id1, id2) {
+    return rounds.reduce((cnt, r) =>
+        cnt + r.matches.reduce((c, m) => {
+            const all = [...m.a, ...m.b];
+            return c + (all.includes(id1) && all.includes(id2) ? 1 : 0);
+        }, 0)
+    , 0);
+}
+// Sum co-play counts for all pairs in a group
+function groupCoPlayScore(ids) {
+    let s = 0;
+    for (let i = 0; i < ids.length; i++)
+        for (let j = i + 1; j < ids.length; j++)
+            s += coPlayCount(ids[i], ids[j]);
+    return s;
+}
+// Try to swap a bench player to reduce co-play score (pair diversity)
+function tryReduceCoPlay(arr, start, len, bench) {
+    const ids = arr.slice(start, start + len).map(p => p.id);
+    const cur = groupCoPlayScore(ids);
+    if (cur === 0) return;
+    let bestScore = cur, bestGi = -1, bestBi = -1;
+    for (let bi = 0; bi < bench.length; bi++) {
+        for (let gi = 0; gi < len; gi++) {
+            const alt = [...ids]; alt[gi] = bench[bi].id;
+            const s = groupCoPlayScore(alt);
+            if (s < bestScore) { bestScore = s; bestGi = gi; bestBi = bi; }
+        }
+    }
+    if (bestGi >= 0) {
+        const tmp = arr[start + bestGi]; arr[start + bestGi] = bench[bestBi]; bench[bestBi] = tmp;
+    }
+}
+function tryReduceCoPlayMF(playM, mStart, playF, fStart, benchM, benchF) {
+    const ids = [playM[mStart].id, playM[mStart+1].id, playF[fStart].id, playF[fStart+1].id];
+    const cur = groupCoPlayScore(ids);
+    if (cur === 0) return;
+    let bestScore = cur, bestSwap = null;
+    for (let bi = 0; bi < benchM.length; bi++) {
+        for (let gi = 0; gi < 2; gi++) {
+            const alt = [...ids]; alt[gi] = benchM[bi].id;
+            const s = groupCoPlayScore(alt);
+            if (s < bestScore) { bestScore = s; bestSwap = { src: 'M', gi, bi }; }
+        }
+    }
+    for (let bi = 0; bi < benchF.length; bi++) {
+        for (let gi = 0; gi < 2; gi++) {
+            const alt = [...ids]; alt[gi + 2] = benchF[bi].id;
+            const s = groupCoPlayScore(alt);
+            if (s < bestScore) { bestScore = s; bestSwap = { src: 'F', gi, bi }; }
+        }
+    }
+    if (bestSwap) {
+        if (bestSwap.src === 'M') {
+            const tmp = playM[mStart + bestSwap.gi]; playM[mStart + bestSwap.gi] = benchM[bestSwap.bi]; benchM[bestSwap.bi] = tmp;
+        } else {
+            const tmp = playF[fStart + bestSwap.gi]; playF[fStart + bestSwap.gi] = benchF[bestSwap.bi]; benchF[bestSwap.bi] = tmp;
+        }
+    }
+}
+
 // Returns true if these player IDs have all appeared together in a single past match
 function hasPlayedTogether(ids) {
     const s = new Set(ids);
@@ -827,13 +895,20 @@ function genDoublesRoundInternal() {
     const benchM = males.slice(mNeeded);
     const benchF = females.slice(fNeeded);
 
-    // Swap with bench if same 4 players have already played together
+    // ① 완전 동일 4인 중복 방지
     for (let i = 0; i < dist.mm; i++)
         tryBreakDuplicate(playM, i * 4, 4, benchM);
     for (let i = 0; i < dist.ff; i++)
         tryBreakDuplicate(playF, i * 4, 4, benchF);
     for (let i = 0; i < dist.mf; i++)
         tryBreakDuplicateMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
+    // ② 페어 다양성 — 같은 조합 빈도 낮추기
+    for (let i = 0; i < dist.mm; i++)
+        tryReduceCoPlay(playM, i * 4, 4, benchM);
+    for (let i = 0; i < dist.ff; i++)
+        tryReduceCoPlay(playF, i * 4, 4, benchF);
+    for (let i = 0; i < dist.mf; i++)
+        tryReduceCoPlayMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
 
     const activeIds = new Set([...playM, ...playF].map(p => p.id));
     // sitting = available this round but not playing
@@ -1002,13 +1077,13 @@ function renderPlayers() {
                             <div class="time-split" style="display:inline-flex" title="참여 시작">
                                 <select id="edit-avail-from-h">${buildHourOpts(p.availFrom ? p.availFrom.split(':')[0] : '')}</select>
                                 <span class="sep">:</span>
-                                <select id="edit-avail-from-m">${buildMinOpts(p.availFrom ? p.availFrom.split(':')[1] : '00')}</select>
+                                <select id="edit-avail-from-m">${buildMinOpts(p.availFrom ? p.availFrom.split(':')[1] : '')}</select>
                             </div>
                             <span style="color:#a0aec0;font-size:11px;margin:0 4px">~</span>
                             <div class="time-split" style="display:inline-flex" title="참여 종료">
                                 <select id="edit-avail-until-h">${buildHourOpts(p.availUntil ? p.availUntil.split(':')[0] : '')}</select>
                                 <span class="sep">:</span>
-                                <select id="edit-avail-until-m">${buildMinOpts(p.availUntil ? p.availUntil.split(':')[1] : '00')}</select>
+                                <select id="edit-avail-until-m">${buildMinOpts(p.availUntil ? p.availUntil.split(':')[1] : '')}</select>
                             </div>
                         </td>
                         <td style="white-space:nowrap;display:flex;gap:6px">
@@ -1032,6 +1107,57 @@ function renderPlayers() {
         if (input) { input.focus(); input.select(); }
     }
     updateRatioSuggest();
+}
+
+// ──────────────────────────────────────────────
+// Drag & Drop
+// ──────────────────────────────────────────────
+let dragSrc = null;
+
+function onChipDragStart(e) {
+    const pos = e.currentTarget.dataset.pos.split(',');
+    dragSrc = { ri: +pos[0], mi: +pos[1], team: pos[2], pi: +pos[3] };
+    e.currentTarget.classList.add('drag-src');
+    e.dataTransfer.effectAllowed = 'move';
+}
+function onChipDragEnd(e) {
+    e.currentTarget.classList.remove('drag-src');
+}
+function onChipDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+function onChipDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+function onChipDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    if (!dragSrc) return;
+    const pos = e.currentTarget.dataset.pos.split(',');
+    const dst = { ri: +pos[0], mi: +pos[1], team: pos[2], pi: +pos[3] };
+    if (dragSrc.ri === dst.ri && dragSrc.mi === dst.mi && dragSrc.team === dst.team && dragSrc.pi === dst.pi) return;
+    const srcRound = rounds.find(r => r.id === dragSrc.ri);
+    const dstRound = rounds.find(r => r.id === dst.ri);
+    if (!srcRound || !dstRound) return;
+    const srcMatch = srcRound.matches[dragSrc.mi];
+    const dstMatch = dstRound.matches[dst.mi];
+    if (!srcMatch || !dstMatch) return;
+    const srcId = srcMatch[dragSrc.team][dragSrc.pi];
+    const dstId = dstMatch[dst.team][dst.pi];
+    srcMatch[dragSrc.team][dragSrc.pi] = dstId;
+    dstMatch[dst.team][dst.pi] = srcId;
+    recalcSit(srcRound);
+    if (dst.ri !== dragSrc.ri) recalcSit(dstRound);
+    dragSrc = null;
+    persist();
+    renderSchedule();
+    renderStats();
+}
+function recalcSit(round) {
+    const ri = round.id - 1;
+    const activeIds = new Set(round.matches.flatMap(m => [...m.a, ...m.b]));
+    round.sit = players.filter(p => isAvailable(p, ri) && !activeIds.has(p.id)).map(p => p.id);
 }
 
 // ──────────────────────────────────────────────
@@ -1071,7 +1197,13 @@ function renderSchedule() {
             const ta = m.a.map(id => byId(id)?.name || '?').join(' · ');
             const tb = m.b.map(id => byId(id)?.name || '?').join(' · ');
             const pill = tl ? `<span class="type-pill ${tl[0]}" style="margin-right:6px;vertical-align:middle">${tl[1]}</span>` : '';
-            return `<td class="court-cell" style="white-space:nowrap" onclick="openMatchEdit(${r.id},${mi})" title="클릭하여 선수 수정">${pill}<span style="font-weight:600">${esc(ta)}</span><span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span><span style="font-weight:600">${esc(tb)}</span></td>`;
+            const chip = (team, pi, id) => {
+                const name = byId(id)?.name || '?';
+                return `<span class="player-chip" draggable="true" data-pos="${r.id},${mi},${team},${pi}" ondragstart="onChipDragStart(event)" ondragend="onChipDragEnd(event)" ondragover="onChipDragOver(event)" ondragleave="onChipDragLeave(event)" ondrop="onChipDrop(event)" onclick="event.stopPropagation()">${esc(name)}</span>`;
+            };
+            const aChips = m.a.map((id, pi) => chip('a', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
+            const bChips = m.b.map((id, pi) => chip('b', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
+            return `<td class="court-cell" style="white-space:nowrap" onclick="openMatchEdit(${r.id},${mi})" title="선수를 드래그해 위치 교체 / 셀 클릭으로 수정">${pill}${aChips}<span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span>${bChips}</td>`;
         }).join('');
 
         const sitStr = r.sit.length
@@ -1279,9 +1411,9 @@ async function copySchedule() {
 // ──────────────────────────────────────────────
 hydrate();
 document.getElementById('p-avail-from-h').innerHTML  = buildHourOpts('');
-document.getElementById('p-avail-from-m').innerHTML  = buildMinOpts('00');
+document.getElementById('p-avail-from-m').innerHTML  = buildMinOpts('');
 document.getElementById('p-avail-until-h').innerHTML = buildHourOpts('');
-document.getElementById('p-avail-until-m').innerHTML = buildMinOpts('00');
+document.getElementById('p-avail-until-m').innerHTML = buildMinOpts('');
 renderPlayers();
 renderSchedule();
 renderStats();
