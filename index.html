@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>테니스 대진표</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+            background: #f0f4f8;
+            color: #2d3748;
+            min-height: 100vh;
+        }
+        header {
+            background: linear-gradient(135deg, #1a365d, #2b6cb0);
+            color: white;
+            padding: 20px 24px;
+        }
+        header h1 { font-size: 22px; letter-spacing: -0.3px; }
+        header p { font-size: 13px; opacity: 0.75; margin-top: 4px; }
+        nav {
+            background: white;
+            border-bottom: 2px solid #e2e8f0;
+            display: flex;
+            overflow-x: auto;
+        }
+        nav button {
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            padding: 13px 22px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #718096;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        nav button.active { color: #2b6cb0; border-bottom-color: #2b6cb0; }
+        nav button:hover:not(.active) { background: #f7fafc; }
+        main { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #1a202c; }
+        .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+        .field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 80px; }
+        label { font-size: 12px; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.4px; }
+        input, select {
+            padding: 8px 10px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 7px;
+            font-size: 14px;
+            font-family: inherit;
+            background: white;
+            color: #2d3748;
+            transition: border-color 0.15s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #2b6cb0;
+            box-shadow: 0 0 0 3px rgba(43,108,176,0.1);
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 7px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { background: #2b6cb0; color: white; }
+        .btn-primary:hover { background: #2c5282; }
+        .btn-green { background: #38a169; color: white; }
+        .btn-green:hover { background: #276749; }
+        .btn-teal { background: #319795; color: white; }
+        .btn-teal:hover { background: #2c7a7b; }
+        .btn-red { background: #e53e3e; color: white; }
+        .btn-red:hover { background: #c53030; }
+        .btn-gray { background: #edf2f7; color: #4a5568; }
+        .btn-gray:hover { background: #e2e8f0; }
+        .btn-sm { padding: 5px 12px; font-size: 12px; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th {
+            background: #f7fafc;
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: #4a5568;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+        tr:last-child td { border-bottom: none; }
+        .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .badge-m { background: #bee3f8; color: #1a4f8a; }
+        .badge-f { background: #fce7f3; color: #831843; }
+        .empty { text-align: center; padding: 48px 20px; color: #a0aec0; }
+        .empty-icon { font-size: 36px; margin-bottom: 10px; }
+        .empty-text { font-size: 14px; line-height: 1.8; }
+
+        /* Player row edit */
+        .player-row { cursor: pointer; }
+        .player-row:hover td { background: #ebf8ff !important; }
+        .editing-row td { background: #fffbeb; }
+        .editing-row input, .editing-row select { padding: 5px 7px; font-size: 13px; }
+
+        /* Schedule */
+        .round-block { background: white; border-radius: 10px; overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .round-head {
+            background: linear-gradient(135deg, #1a365d, #2b6cb0);
+            color: white;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .round-num { font-weight: 700; font-size: 16px; }
+        .round-info { font-size: 12px; opacity: 0.8; }
+        .round-time { font-size: 12px; background: rgba(255,255,255,0.18); padding: 2px 10px; border-radius: 20px; margin-left: 10px; }
+        .round-body { padding: 12px 16px; }
+        .match-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; flex-wrap: wrap; }
+        .match-row:last-child { border-bottom: none; }
+        .court-info { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        .court-badge { background: #ebf8ff; color: #2b6cb0; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; min-width: 56px; text-align: center; }
+        .type-pill { display: inline-flex; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .ct-mm { background: #bee3f8; color: #1a4f8a; }
+        .ct-ff { background: #fce7f3; color: #831843; }
+        .ct-mf { background: #c6f6d5; color: #276749; }
+        .team { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .vs-text { color: #a0aec0; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+        .chip { padding: 4px 11px; border-radius: 20px; font-size: 13px; font-weight: 500; }
+        .chip-m { background: #ebf8ff; color: #2c5282; }
+        .chip-f { background: #fff5f7; color: #97266d; }
+        .chip-ntrp { font-size: 10px; opacity: 0.6; margin-left: 2px; }
+        .rest-line { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0; font-size: 13px; color: #718096; }
+        .rest-line strong { color: #4a5568; }
+
+        /* Stats */
+        .stat-warn-text { font-size: 12px; color: #e53e3e; font-weight: 600; }
+
+        /* Settings */
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+        .info-list { list-style: none; }
+        .info-list li { padding: 9px 0; font-size: 14px; color: #4a5568; border-bottom: 1px solid #f0f0f0; line-height: 1.6; }
+        .info-list li:last-child { border-bottom: none; }
+        .preview-box {
+            margin-top: 14px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .preview-blue { background: #ebf8ff; color: #2b6cb0; }
+        .preview-red  { background: #fff5f5; color: #e53e3e; }
+        .preview-gray { background: #f7fafc; color: #a0aec0; }
+        .ratio-pills { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+        .ratio-pill { padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+        .ratio-sep { color: #a0aec0; font-weight: 700; }
+
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .sched-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+
+        @media (max-width: 560px) {
+            header { padding: 16px; }
+            main { padding: 12px; }
+            .match-row { gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+
+<header style="display:flex;justify-content:space-between;align-items:center">
+    <div>
+        <h1>🎾 테니스 대진표 생성기</h1>
+        <p>성별 · NTRP를 고려한 균형 대진표 자동 생성</p>
+    </div>
+    <div style="font-size:11px;opacity:0.7;text-align:right;line-height:1.8;flex-shrink:0;margin-left:16px">
+        개인 테니스 모임 전용 도구입니다.<br>
+        수정 요청 →
+        <a href="https://instagram.com/sadangcityboyy" target="_blank"
+           style="color:white;font-weight:600;text-decoration:none">@sadangcityboyy</a>
+    </div>
+</header>
+
+<nav id="nav">
+    <button class="active" onclick="goTab(this,'players')">👥 참가자</button>
+    <button onclick="goTab(this,'settings')">⚙️ 설정</button>
+    <button onclick="goTab(this,'schedule')">📋 대진표</button>
+    <button onclick="goTab(this,'stats')">📊 통계</button>
+</nav>
+
+<main>
+
+    <!-- ① 참가자 -->
+    <div id="panel-players" class="panel active">
+        <div class="card">
+            <div class="card-title">참가자 추가</div>
+            <div class="form-row">
+                <div class="field">
+                    <label>이름</label>
+                    <input id="p-name" type="text" placeholder="홍길동">
+                </div>
+                <div class="field" style="flex:0 0 auto;min-width:68px">
+                    <label>성별</label>
+                    <select id="p-gender">
+                        <option value="M">남</option>
+                        <option value="F">여</option>
+                    </select>
+                </div>
+                <div class="field" style="flex:0 0 auto;min-width:80px">
+                    <label>NTRP</label>
+                    <select id="p-ntrp">
+                        <option>2.0</option><option>2.5</option>
+                        <option>3.0</option><option>3.5</option>
+                        <option value="4.0" selected>4.0</option>
+                        <option>4.5</option><option>5.0</option>
+                        <option>5.5</option><option>6.0</option>
+                        <option>6.5</option><option>7.0</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" style="align-self:flex-end" onclick="addPlayer()">+ 추가</button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="flex-between" style="margin-bottom:16px">
+                <span class="card-title" style="margin-bottom:0">
+                    참가자 목록 <span id="p-count" style="font-weight:400;color:#718096;font-size:14px"></span>
+                </span>
+                <button class="btn btn-gray btn-sm" onclick="clearAll()">전체 삭제</button>
+            </div>
+            <div id="p-list"></div>
+        </div>
+    </div>
+
+    <!-- ② 설정 -->
+    <div id="panel-settings" class="panel">
+        <div class="card">
+            <div class="card-title">게임 설정</div>
+            <div class="settings-grid">
+                <div class="field">
+                    <label>코트 수</label>
+                    <select id="s-courts" onchange="setSetting('courts', +this.value)">
+                        <option value="1">1면</option>
+                        <option value="2" selected>2면</option>
+                        <option value="3">3면</option>
+                        <option value="4">4면</option>
+                        <option value="5">5면</option>
+                        <option value="6">6면</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>경기 방식</label>
+                    <select id="s-type" onchange="setSetting('gameType', this.value); updateRatioCard()">
+                        <option value="doubles">복식 (4명/코트)</option>
+                        <option value="singles">단식 (2명/코트)</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>대진 방식</label>
+                    <select id="s-match" onchange="setSetting('matching', this.value)">
+                        <option value="balanced">균형 (NTRP 기반)</option>
+                        <option value="random">랜덤</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>시작 시간</label>
+                    <input id="s-starttime" type="time" value="10:00"
+                        onchange="setSetting('startTime', this.value); updateTimePreview()">
+                </div>
+                <div class="field">
+                    <label>게임 시간</label>
+                    <select id="s-gamemins" onchange="setSetting('gameMins', +this.value); updateTimePreview()">
+                        <option value="15">15분</option>
+                        <option value="20">20분</option>
+                        <option value="25">25분</option>
+                        <option value="30" selected>30분</option>
+                        <option value="40">40분</option>
+                        <option value="45">45분</option>
+                        <option value="60">60분</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>종료 시간</label>
+                    <input id="s-endtime" type="time" value="12:00"
+                        onchange="setSetting('endTime', this.value); updateTimePreview()">
+                </div>
+            </div>
+            <div id="time-preview" class="preview-box preview-gray">종료 시간을 설정하면 총 라운드 수를 확인할 수 있습니다.</div>
+        </div>
+
+        <div id="ratio-card" class="card">
+            <div class="card-title">복식 구성 비율</div>
+            <p style="font-size:13px;color:#718096;margin-bottom:14px">
+                라운드마다 코트를 아래 비율로 배분합니다. 참가자 성비에 따라 자동 조정됩니다.
+            </p>
+            <div class="settings-grid">
+                <div class="field">
+                    <label>남자 복식</label>
+                    <input id="s-ratiomm" type="number" min="0" max="10" value="1"
+                        oninput="setSetting('ratioMM', +this.value); updateRatioPreview()">
+                </div>
+                <div class="field">
+                    <label>여자 복식</label>
+                    <input id="s-ratioff" type="number" min="0" max="10" value="1"
+                        oninput="setSetting('ratioFF', +this.value); updateRatioPreview()">
+                </div>
+                <div class="field">
+                    <label>혼합 복식</label>
+                    <input id="s-ratiomf" type="number" min="0" max="10" value="2"
+                        oninput="setSetting('ratioMF', +this.value); updateRatioPreview()">
+                </div>
+            </div>
+            <div class="ratio-pills" id="ratio-preview"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">우선순위 원칙</div>
+            <ul class="info-list">
+                <li>① <strong>연속 휴식 방지</strong> — 직전 라운드에 쉰 선수를 최우선 배정합니다</li>
+                <li>② <strong>게임 횟수 균형</strong> — 게임을 적게 한 선수를 우선 배정합니다</li>
+                <li>③ <strong>코트별 수준 배분</strong> — NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</li>
+                <li>④ <strong>팀 내 밸런스</strong> — (1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <!-- ③ 대진표 -->
+    <div id="panel-schedule" class="panel">
+        <div class="sched-toolbar">
+            <button class="btn btn-green" style="flex:1;padding:13px;font-size:15px;min-width:140px" onclick="genRound()">▶ 다음 라운드</button>
+            <button id="btn-gen-all" class="btn btn-teal" style="flex:1;padding:13px;font-size:15px;min-width:140px" onclick="genAllRounds()">⏭ 전체 생성</button>
+        </div>
+        <div class="sched-toolbar" style="margin-top:-6px">
+            <button class="btn btn-gray" onclick="delLastRound()">↩ 마지막 삭제</button>
+            <button class="btn btn-gray btn-sm" onclick="copySchedule()">📋 복사</button>
+            <button class="btn btn-red btn-sm" onclick="resetRounds()">🗑 전체 초기화</button>
+        </div>
+        <div id="schedule-list"></div>
+    </div>
+
+    <!-- ④ 통계 -->
+    <div id="panel-stats" class="panel">
+        <div class="card">
+            <div class="flex-between" style="margin-bottom:16px">
+                <span class="card-title" style="margin-bottom:0">참가자 통계</span>
+                <span style="font-size:13px;color:#718096">총 <strong id="stat-rounds">0</strong> 라운드</span>
+            </div>
+            <div id="stat-grid"></div>
+        </div>
+    </div>
+
+</main>
+
+<script>
+// ──────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────
+let players   = [];
+let rounds    = [];
+let nextId    = 1;
+let editingId = null;
+let cfg = {
+    courts: 2, gameType: 'doubles', matching: 'balanced',
+    startTime: '10:00', gameMins: 30, endTime: '12:00',
+    ratioMM: 1, ratioFF: 1, ratioMF: 2
+};
+
+// ──────────────────────────────────────────────
+// Persistence
+// ──────────────────────────────────────────────
+function persist() {
+    try { localStorage.setItem('td3', JSON.stringify({ players, rounds, nextId, cfg })); } catch {}
+}
+function hydrate() {
+    try {
+        const d = JSON.parse(localStorage.getItem('td3') || 'null');
+        if (!d) return;
+        players = d.players || [];
+        rounds  = d.rounds  || [];
+        nextId  = d.nextId  || (players.length ? Math.max(...players.map(p => p.id)) + 1 : 1);
+        cfg     = { ...cfg, ...(d.cfg || {}) };
+        document.getElementById('s-courts').value    = cfg.courts;
+        document.getElementById('s-type').value      = cfg.gameType;
+        document.getElementById('s-match').value     = cfg.matching;
+        document.getElementById('s-starttime').value = cfg.startTime;
+        document.getElementById('s-gamemins').value  = cfg.gameMins;
+        document.getElementById('s-endtime').value   = cfg.endTime || '';
+        document.getElementById('s-ratiomm').value   = cfg.ratioMM;
+        document.getElementById('s-ratioff').value   = cfg.ratioFF;
+        document.getElementById('s-ratiomf').value   = cfg.ratioMF;
+    } catch {}
+}
+function setSetting(k, v) { cfg[k] = v; persist(); }
+
+// ──────────────────────────────────────────────
+// Navigation
+// ──────────────────────────────────────────────
+function goTab(btn, name) {
+    document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+    if (name === 'stats')    renderStats();
+    if (name === 'schedule') renderSchedule();
+    if (name === 'settings') { updateTimePreview(); updateRatioPreview(); updateRatioCard(); }
+}
+function switchToSchedule() {
+    goTab(document.querySelectorAll('#nav button')[2], 'schedule');
+}
+
+// ──────────────────────────────────────────────
+// Settings previews
+// ──────────────────────────────────────────────
+function calcTotalRounds() {
+    if (!cfg.endTime || !cfg.startTime) return 0;
+    const [sh, sm] = cfg.startTime.split(':').map(Number);
+    const [eh, em] = cfg.endTime.split(':').map(Number);
+    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    return diff > 0 ? Math.floor(diff / (cfg.gameMins || 30)) : 0;
+}
+function updateTimePreview() {
+    const total = calcTotalRounds();
+    const el = document.getElementById('time-preview');
+    const btn = document.getElementById('btn-gen-all');
+    if (!cfg.endTime) {
+        el.textContent = '종료 시간을 설정하면 총 라운드 수를 확인할 수 있습니다.';
+        el.className = 'preview-box preview-gray';
+        if (btn) btn.textContent = '⏭ 전체 생성';
+        return;
+    }
+    if (total <= 0) {
+        el.textContent = '종료 시간이 시작 시간보다 늦어야 합니다.';
+        el.className = 'preview-box preview-red';
+        if (btn) btn.textContent = '⏭ 전체 생성';
+        return;
+    }
+    el.textContent = `${cfg.startTime} ~ ${cfg.endTime}  ·  ${cfg.gameMins}분/게임  →  총 ${total}라운드`;
+    el.className = 'preview-box preview-blue';
+    if (btn) btn.textContent = `⏭ 전체 생성 (총 ${total}라운드)`;
+}
+function updateRatioPreview() {
+    const el = document.getElementById('ratio-preview');
+    if (!el) return;
+    const mm = Math.max(0, cfg.ratioMM || 0);
+    const ff = Math.max(0, cfg.ratioFF || 0);
+    const mf = Math.max(0, cfg.ratioMF || 0);
+    if (mm + ff + mf === 0) {
+        el.innerHTML = '<span style="color:#a0aec0;font-size:13px">비율을 1 이상으로 설정해주세요.</span>';
+        return;
+    }
+    const parts = [];
+    if (mm > 0) parts.push(`<span class="ratio-pill ct-mm">남복 ${mm}</span>`);
+    if (ff > 0) parts.push(`<span class="ratio-pill ct-ff">여복 ${ff}</span>`);
+    if (mf > 0) parts.push(`<span class="ratio-pill ct-mf">혼합 ${mf}</span>`);
+    el.innerHTML = parts.join('<span class="ratio-sep"> : </span>');
+}
+function updateRatioCard() {
+    const card = document.getElementById('ratio-card');
+    if (card) card.style.display = cfg.gameType === 'doubles' ? '' : 'none';
+}
+
+// ──────────────────────────────────────────────
+// Player management
+// ──────────────────────────────────────────────
+function addPlayer() {
+    const name = document.getElementById('p-name').value.trim();
+    if (!name) { alert('이름을 입력해주세요.'); return; }
+    players.push({
+        id:     nextId++,
+        name,
+        gender: document.getElementById('p-gender').value,
+
+        ntrp:   +(document.getElementById('p-ntrp').value)
+    });
+    document.getElementById('p-name').value = '';
+    persist();
+    renderPlayers();
+}
+function removePlayer(id) {
+    if (editingId === id) editingId = null;
+    players = players.filter(p => p.id !== id);
+    persist();
+    renderPlayers();
+}
+function clearAll() {
+    if (!confirm('참가자 전체와 모든 대진표를 삭제할까요?')) return;
+    players = []; rounds = []; nextId = 1; editingId = null;
+    persist();
+    renderPlayers(); renderSchedule(); renderStats();
+}
+function editPlayer(id) {
+    editingId = id;
+    renderPlayers();
+}
+function cancelEdit() {
+    editingId = null;
+    renderPlayers();
+}
+function savePlayer(id) {
+    const p = players.find(q => q.id === id);
+    if (!p) return;
+    const name = document.getElementById('edit-name').value.trim();
+    if (!name) { alert('이름을 입력해주세요.'); return; }
+    p.name   = name;
+    p.gender = document.getElementById('edit-gender').value;
+
+    p.ntrp   = +(document.getElementById('edit-ntrp').value);
+    editingId = null;
+    persist();
+    renderPlayers();
+    renderSchedule();
+}
+
+// ──────────────────────────────────────────────
+// Stats helpers
+// ──────────────────────────────────────────────
+function inMatch(pid, round) {
+    return round.matches.some(m => m.a.includes(pid) || m.b.includes(pid));
+}
+function gameCnt(pid) { return rounds.filter(r => inMatch(pid, r)).length; }
+function restCnt(pid) { return rounds.filter(r => !inMatch(pid, r)).length; }
+function consRests(pid) {
+    let n = 0;
+    for (let i = rounds.length - 1; i >= 0; i--) {
+        if (!inMatch(pid, rounds[i])) n++; else break;
+    }
+    return n;
+}
+
+// ──────────────────────────────────────────────
+// Round generation
+// ──────────────────────────────────────────────
+function prioritySorted(gender) {
+    return players
+        .filter(p => gender == null || p.gender === gender)
+        .sort((a, b) =>
+            consRests(b.id) - consRests(a.id) ||
+            gameCnt(a.id)   - gameCnt(b.id)   ||
+            Math.random() - 0.5
+        );
+}
+
+function makeMatch(courtNum, type, group) {
+    if (cfg.matching === 'balanced') {
+        const s = [...group].sort((a, b) => b.ntrp - a.ntrp);
+        if (s.length === 4) return { court: courtNum, type, a: [s[0].id, s[3].id], b: [s[1].id, s[2].id] };
+        return { court: courtNum, type, a: [s[0].id], b: [s[1].id] };
+    }
+    const s = [...group].sort(() => Math.random() - 0.5);
+    if (s.length === 4) return { court: courtNum, type, a: [s[0].id, s[1].id], b: [s[2].id, s[3].id] };
+    return { court: courtNum, type, a: [s[0].id], b: [s[1].id] };
+}
+
+// Best feasible (mm, ff, mf) court distribution matching the configured ratio.
+// Uses cumulative history so deviations from the target ratio are corrected
+// over successive rounds (e.g. alternates between (2MM+1FF) and (1MM+2MF)
+// when the exact ratio cannot be achieved in a single round).
+function calcCourtDist(maxCourts, mAvail, fAvail) {
+    const rmm = Math.max(0, cfg.ratioMM || 0);
+    const rff = Math.max(0, cfg.ratioFF || 0);
+    const rmf = Math.max(0, cfg.ratioMF || 0);
+    const rsum = rmm + rff + rmf || 1;
+
+    // Count court types already played across all previous rounds
+    const hist = { mm: 0, ff: 0, mf: 0 };
+    rounds.forEach(r => r.matches.forEach(m => {
+        if (m.type === 'MM') hist.mm++;
+        else if (m.type === 'FF') hist.ff++;
+        else if (m.type === 'MF') hist.mf++;
+    }));
+
+    let best = { mm: 0, ff: 0, mf: 0, score: -Infinity };
+
+    for (let mm = 0; mm <= Math.min(maxCourts, Math.floor(mAvail / 4)); mm++) {
+        for (let ff = 0; ff <= Math.min(maxCourts - mm, Math.floor(fAvail / 4)); ff++) {
+            const mfCap = Math.min(
+                maxCourts - mm - ff,
+                Math.floor((mAvail - mm * 4) / 2),
+                Math.floor((fAvail - ff * 4) / 2)
+            );
+            for (let mf = 0; mf <= Math.max(0, mfCap); mf++) {
+                const total = mm + ff + mf;
+                if (total === 0) continue;
+
+                // Evaluate how the cumulative ratio looks AFTER this round
+                const cMM = hist.mm + mm;
+                const cFF = hist.ff + ff;
+                const cMF = hist.mf + mf;
+                const cTotal = cMM + cFF + cMF;
+                const cumDiff =
+                    Math.abs(cMM / cTotal - rmm / rsum) +
+                    Math.abs(cFF / cTotal - rff / rsum) +
+                    Math.abs(cMF / cTotal - rmf / rsum);
+
+                // Primary  : use as many courts as possible
+                // Secondary: cumulative ratio deviation (lower = better)
+                // Tiebreak : when FF is in the target ratio, slightly prefer
+                //            options that actually include an FF court
+                const score = total * 100 - cumDiff * 100 + (rff > 0 && ff > 0 ? 0.1 : 0);
+
+                if (score > best.score) best = { mm, ff, mf, score };
+            }
+        }
+    }
+    return { mm: best.mm, ff: best.ff, mf: best.mf };
+}
+
+function genDoublesRoundInternal() {
+    if (players.length < 4) { alert('최소 4명이 필요합니다.'); return false; }
+    const males   = prioritySorted('M');
+    const females = prioritySorted('F');
+    const maxCourts = Math.min(cfg.courts, Math.floor(players.length / 4));
+    if (maxCourts === 0) { alert('최소 4명이 필요합니다.'); return false; }
+    const dist = calcCourtDist(maxCourts, males.length, females.length);
+    const mNeeded = dist.mm * 4 + dist.mf * 2;
+    const fNeeded = dist.ff * 4 + dist.mf * 2;
+    const activeMales   = males.slice(0, mNeeded);
+    const activeFemales = females.slice(0, fNeeded);
+    const activeIds = new Set([...activeMales, ...activeFemales].map(p => p.id));
+    const sitting   = players.filter(p => !activeIds.has(p.id));
+    const matches = [];
+    let cn = 1;
+    for (let i = 0; i < dist.mm; i++)
+        matches.push(makeMatch(cn++, 'MM', activeMales.slice(i * 4, i * 4 + 4)));
+    for (let i = 0; i < dist.ff; i++)
+        matches.push(makeMatch(cn++, 'FF', activeFemales.slice(i * 4, i * 4 + 4)));
+    const mfM = activeMales.slice(dist.mm * 4);
+    const mfF = activeFemales.slice(dist.ff * 4);
+    for (let i = 0; i < dist.mf; i++)
+        matches.push(makeMatch(cn++, 'MF', [...mfM.slice(i * 2, i * 2 + 2), ...mfF.slice(i * 2, i * 2 + 2)]));
+    rounds.push({ id: rounds.length + 1, matches, sit: sitting.map(p => p.id) });
+    return true;
+}
+
+function genSinglesRoundInternal() {
+    if (players.length < 2) { alert('최소 2명이 필요합니다.'); return false; }
+    const sorted = prioritySorted(null);
+    const maxCourts = Math.min(cfg.courts, Math.floor(sorted.length / 2));
+    const active  = sorted.slice(0, maxCourts * 2);
+    const sitting = sorted.slice(maxCourts * 2);
+    const matches = [];
+    for (let i = 0; i < maxCourts; i++)
+        matches.push(makeMatch(i + 1, null, active.slice(i * 2, i * 2 + 2)));
+    rounds.push({ id: rounds.length + 1, matches, sit: sitting.map(p => p.id) });
+    return true;
+}
+
+function genRoundInternal() {
+    return cfg.gameType === 'doubles' ? genDoublesRoundInternal() : genSinglesRoundInternal();
+}
+
+function genRound() {
+    if (!genRoundInternal()) return;
+    persist();
+    renderSchedule();
+    renderStats();
+    switchToSchedule();
+}
+
+function genAllRounds() {
+    const total = calcTotalRounds();
+    if (total <= 0) {
+        alert('설정 탭에서 종료 시간을 확인해주세요.');
+        return;
+    }
+    const remaining = total - rounds.length;
+    if (remaining <= 0) {
+        alert(`이미 총 ${total}라운드가 모두 생성되었습니다.`);
+        return;
+    }
+    const msg = rounds.length > 0
+        ? `라운드 ${rounds.length + 1}~${total}, 총 ${remaining}라운드를 이어서 생성할까요?`
+        : `${cfg.startTime} ~ ${cfg.endTime} 기준 총 ${total}라운드를 한번에 생성할까요?`;
+    if (!confirm(msg)) return;
+    for (let i = 0; i < remaining; i++) {
+        if (!genRoundInternal()) break;
+    }
+    persist();
+    renderSchedule();
+    renderStats();
+    switchToSchedule();
+}
+
+function delLastRound() {
+    if (!rounds.length) return;
+    if (!confirm(`라운드 ${rounds.length} 기록을 삭제할까요?`)) return;
+    rounds.pop();
+    persist();
+    renderSchedule();
+    renderStats();
+}
+function resetRounds() {
+    if (!confirm('모든 대진표 기록을 삭제할까요?')) return;
+    rounds = [];
+    persist();
+    renderSchedule();
+    renderStats();
+}
+
+// ──────────────────────────────────────────────
+// Time helpers
+// ──────────────────────────────────────────────
+function fmtTime(totalMins) {
+    const h = Math.floor(totalMins / 60) % 24;
+    const m = totalMins % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+function roundTimeSlot(roundIndex) {
+    const [h, m] = (cfg.startTime || '10:00').split(':').map(Number);
+    const start = h * 60 + m + roundIndex * (cfg.gameMins || 30);
+    return `${fmtTime(start)} ~ ${fmtTime(start + (cfg.gameMins || 30))}`;
+}
+
+// ──────────────────────────────────────────────
+// Rendering helpers
+// ──────────────────────────────────────────────
+function esc(s) {
+    return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function byId(id) { return players.find(p => p.id === id); }
+function chip(pid) {
+    const p = byId(pid);
+    if (!p) return '';
+    const cls = p.gender === 'M' ? 'chip-m' : 'chip-f';
+    return `<span class="chip ${cls}">${esc(p.name)}<span class="chip-ntrp">${p.ntrp}</span></span>`;
+}
+const TYPE_LABEL = { MM: ['ct-mm', '남복'], FF: ['ct-ff', '여복'], MF: ['ct-mf', '혼합'] };
+function typePill(type) {
+    if (!type || !TYPE_LABEL[type]) return '';
+    const [cls, label] = TYPE_LABEL[type];
+    return `<span class="type-pill ${cls}">${label}</span>`;
+}
+
+// ──────────────────────────────────────────────
+// Render: Players
+// ──────────────────────────────────────────────
+function renderPlayers() {
+    document.getElementById('p-count').textContent = `(${players.length}명)`;
+    const el = document.getElementById('p-list');
+    if (!players.length) {
+        el.innerHTML = `<div class="empty"><div class="empty-icon">🎾</div><div class="empty-text">참가자를 추가해주세요</div></div>`;
+        return;
+    }
+    const ntrpOpts = v => ['2.0','2.5','3.0','3.5','4.0','4.5','5.0','5.5','6.0','6.5','7.0']
+        .map(n => `<option value="${n}"${+n === v ? ' selected' : ''}>${n}</option>`).join('');
+    el.innerHTML = `
+        <div class="table-wrap"><table>
+            <thead><tr><th>이름</th><th>성별</th><th>NTRP</th><th></th></tr></thead>
+            <tbody>
+            ${players.map(p => {
+                if (p.id === editingId) return `
+                    <tr class="editing-row">
+                        <td><input id="edit-name" type="text" value="${esc(p.name)}" style="width:100%;min-width:80px"
+                            onkeydown="if(event.key==='Enter')savePlayer(${p.id});else if(event.key==='Escape')cancelEdit()"></td>
+                        <td><select id="edit-gender">
+                            <option value="M"${p.gender==='M'?' selected':''}>남</option>
+                            <option value="F"${p.gender==='F'?' selected':''}>여</option>
+                        </select></td>
+                        <td><select id="edit-ntrp">${ntrpOpts(p.ntrp)}</select></td>
+                        <td style="white-space:nowrap;display:flex;gap:6px">
+                            <button class="btn btn-primary btn-sm" onclick="savePlayer(${p.id})">저장</button>
+                            <button class="btn btn-gray btn-sm" onclick="cancelEdit()">취소</button>
+                        </td>
+                    </tr>`;
+                return `
+                    <tr class="player-row" onclick="editPlayer(${p.id})" title="클릭하여 수정">
+                        <td><strong>${esc(p.name)}</strong></td>
+                        <td><span class="badge badge-${p.gender.toLowerCase()}">${p.gender==='M'?'남':'여'}</span></td>
+                        <td>${p.ntrp}</td>
+                        <td><button class="btn btn-red btn-sm" onclick="event.stopPropagation();removePlayer(${p.id})">삭제</button></td>
+                    </tr>`;
+            }).join('')}
+            </tbody>
+        </table></div>`;
+    if (editingId !== null) {
+        const input = document.getElementById('edit-name');
+        if (input) { input.focus(); input.select(); }
+    }
+}
+
+// ──────────────────────────────────────────────
+// Render: Schedule
+// ──────────────────────────────────────────────
+function renderSchedule() {
+    const el = document.getElementById('schedule-list');
+    if (!rounds.length) {
+        el.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">대진표가 없습니다<br>위 버튼을 눌러 라운드를 생성하세요</div></div>`;
+        return;
+    }
+
+    const maxCourts = Math.max(...rounds.map(r => r.matches.length));
+
+    const courtHeaders = Array.from({ length: maxCourts }, (_, i) => `<th>코트 ${i + 1}</th>`).join('');
+
+    const rows = rounds.map(r => {
+        const timeSlot = roundTimeSlot(r.id - 1);
+
+        const courtCells = Array.from({ length: maxCourts }, (_, i) => {
+            const m = r.matches.find(m => m.court === i + 1);
+            if (!m) return `<td style="color:#cbd5e0;text-align:center">-</td>`;
+            const tl = m.type ? TYPE_LABEL[m.type] : null;
+            const ta = m.a.map(id => byId(id)?.name || '?').join(' · ');
+            const tb = m.b.map(id => byId(id)?.name || '?').join(' · ');
+            const pill = tl ? `<span class="type-pill ${tl[0]}" style="margin-right:6px;vertical-align:middle">${tl[1]}</span>` : '';
+            return `<td style="white-space:nowrap">${pill}<span style="font-weight:600">${esc(ta)}</span><span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span><span style="font-weight:600">${esc(tb)}</span></td>`;
+        }).join('');
+
+        const sitStr = r.sit.length
+            ? r.sit.map(id => { const p = byId(id); return p ? esc(p.name) : '?'; }).join(', ')
+            : '<span style="color:#a0aec0">-</span>';
+
+        return `<tr>
+            <td style="text-align:center;font-weight:700;color:#2b6cb0">${r.id}</td>
+            <td style="white-space:nowrap;color:#4a5568;font-size:13px">${timeSlot}</td>
+            ${courtCells}
+            <td style="color:#718096;font-size:13px">${sitStr}</td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+        <div class="table-wrap">
+        <table>
+            <thead><tr>
+                <th style="text-align:center">R</th>
+                <th>시간</th>
+                ${courtHeaders}
+                <th>대기</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        </div>`;
+}
+
+// ──────────────────────────────────────────────
+// Render: Stats
+// ──────────────────────────────────────────────
+function renderStats() {
+    document.getElementById('stat-rounds').textContent = rounds.length;
+    const el = document.getElementById('stat-grid');
+    if (!players.length || !rounds.length) {
+        el.innerHTML = `<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">라운드를 생성하면 통계가 표시됩니다</div></div>`;
+        return;
+    }
+    const sorted = [...players].sort((a, b) => gameCnt(b.id) - gameCnt(a.id));
+    el.innerHTML = `
+        <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>이름</th><th>성별</th><th>게임 횟수</th><th>대기 횟수</th><th>연속 대기</th></tr>
+            </thead>
+            <tbody>
+            ${sorted.map(p => {
+                const g = gameCnt(p.id), rs = restCnt(p.id), cr = consRests(p.id);
+                return `
+                    <tr${cr >= 2 ? ' style="background:#fff5f5"' : ''}>
+                        <td><strong>${esc(p.name)}</strong></td>
+                        <td><span class="badge badge-${p.gender.toLowerCase()}">${p.gender === 'M' ? '남' : '여'}</span></td>
+                        <td>${g}회</td>
+                        <td>${rs}회</td>
+                        <td>${cr >= 2 ? `<span class="stat-warn-text">⚠ ${cr}회 연속</span>` : cr === 1 ? `${cr}회` : '-'}</td>
+                    </tr>`;
+            }).join('')}
+            </tbody>
+        </table>
+        </div>`;
+}
+
+// ──────────────────────────────────────────────
+// Copy schedule as text
+// ──────────────────────────────────────────────
+function copySchedule() {
+    if (!rounds.length) { alert('대진표가 없습니다.'); return; }
+    const typeText = { MM: '[남복]', FF: '[여복]', MF: '[혼합]' };
+    const lines = rounds.map(r => {
+        const slot = roundTimeSlot(r.id - 1);
+        const ml = r.matches.map(m => {
+            const t = m.type ? typeText[m.type] + ' ' : '';
+            const ta = m.a.map(id => byId(id)?.name || '?').join('+');
+            const tb = m.b.map(id => byId(id)?.name || '?').join('+');
+            return `  코트${m.court} ${t}: ${ta} VS ${tb}`;
+        });
+        const sl = r.sit.length ? `  대기: ${r.sit.map(id => byId(id)?.name || '?').join(', ')}` : '';
+        return [`[라운드 ${r.id}] ${slot}`, ...ml, ...(sl ? [sl] : [])].join('\n');
+    });
+    const text = lines.join('\n\n');
+    navigator.clipboard.writeText(text)
+        .then(() => alert('대진표가 클립보드에 복사되었습니다.'))
+        .catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = text; document.body.appendChild(ta);
+            ta.select(); document.execCommand('copy');
+            document.body.removeChild(ta);
+            alert('대진표가 클립보드에 복사되었습니다.');
+        });
+}
+
+// ──────────────────────────────────────────────
+// Init
+// ──────────────────────────────────────────────
+hydrate();
+renderPlayers();
+renderSchedule();
+renderStats();
+updateTimePreview();
+updateRatioPreview();
+updateRatioCard();
+
+document.getElementById('p-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addPlayer();
+});
+</script>
+</body>
+</html>
