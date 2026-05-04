@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>테니스 대진표</title>
+    <title>꼬꼬 대장 김혜빈을 위한 테니스 대진표 생성 프으로그램</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -193,7 +193,7 @@
 
 <header style="display:flex;justify-content:space-between;align-items:center">
     <div>
-        <h1>🎾 테니스 대진표 생성기</h1>
+        <h1>🎾 꼬꼬 대장 김혜빈을 위한 테니스 대진표 생성 프으로그램</h1>
         <p>성별 · NTRP를 고려한 균형 대진표 자동 생성</p>
     </div>
     <div style="font-size:11px;opacity:0.7;text-align:right;line-height:1.8;flex-shrink:0;margin-left:16px">
@@ -346,6 +346,7 @@
                 <li>② <strong>게임 횟수 균형</strong> — 게임을 적게 한 선수를 우선 배정합니다</li>
                 <li>③ <strong>코트별 수준 배분</strong> — NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</li>
                 <li>④ <strong>팀 내 밸런스</strong> — (1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</li>
+                <li>⑤ <strong>중복 매치 방지</strong> — 동일한 4명이 같은 코트에 다시 배정되지 않도록 대기 선수와 교체합니다</li>
             </ul>
         </div>
 
@@ -629,6 +630,60 @@ function calcCourtDist(maxCourts, mAvail, fAvail) {
     return { mm: best.mm, ff: best.ff, mf: best.mf };
 }
 
+// Returns true if these player IDs have all appeared together in a single past match
+function hasPlayedTogether(ids) {
+    const s = new Set(ids);
+    return rounds.some(r =>
+        r.matches.some(m => {
+            const mids = [...m.a, ...m.b];
+            return mids.length === s.size && mids.every(id => s.has(id));
+        })
+    );
+}
+
+// Try to swap one player in arr[start..start+len] with a bench player to break a duplicate.
+// Mutates arr and bench in-place.
+function tryBreakDuplicate(arr, start, len, bench) {
+    const ids = arr.slice(start, start + len).map(p => p.id);
+    if (!hasPlayedTogether(ids)) return;
+    for (let bi = 0; bi < bench.length; bi++) {
+        for (let gi = 0; gi < len; gi++) {
+            const alt = [...ids];
+            alt[gi] = bench[bi].id;
+            if (!hasPlayedTogether(alt)) {
+                const tmp = arr[start + gi];
+                arr[start + gi] = bench[bi];
+                bench[bi] = tmp;
+                return;
+            }
+        }
+    }
+}
+
+// MF variant: group spans two arrays (males + females). Gender constraint is respected.
+function tryBreakDuplicateMF(playM, mStart, playF, fStart, benchM, benchF) {
+    const ids = [playM[mStart].id, playM[mStart+1].id, playF[fStart].id, playF[fStart+1].id];
+    if (!hasPlayedTogether(ids)) return;
+    for (let bi = 0; bi < benchM.length; bi++) {
+        for (let gi = 0; gi < 2; gi++) {
+            const alt = [...ids]; alt[gi] = benchM[bi].id;
+            if (!hasPlayedTogether(alt)) {
+                const tmp = playM[mStart + gi]; playM[mStart + gi] = benchM[bi]; benchM[bi] = tmp;
+                return;
+            }
+        }
+    }
+    for (let bi = 0; bi < benchF.length; bi++) {
+        for (let gi = 0; gi < 2; gi++) {
+            const alt = [...ids]; alt[gi + 2] = benchF[bi].id;
+            if (!hasPlayedTogether(alt)) {
+                const tmp = playF[fStart + gi]; playF[fStart + gi] = benchF[bi]; benchF[bi] = tmp;
+                return;
+            }
+        }
+    }
+}
+
 function genDoublesRoundInternal() {
     if (players.length < 4) { alert('최소 4명이 필요합니다.'); return false; }
     const males   = prioritySorted('M');
@@ -638,18 +693,29 @@ function genDoublesRoundInternal() {
     const dist = calcCourtDist(maxCourts, males.length, females.length);
     const mNeeded = dist.mm * 4 + dist.mf * 2;
     const fNeeded = dist.ff * 4 + dist.mf * 2;
-    const activeMales   = males.slice(0, mNeeded);
-    const activeFemales = females.slice(0, fNeeded);
-    const activeIds = new Set([...activeMales, ...activeFemales].map(p => p.id));
+    const playM  = males.slice(0, mNeeded);
+    const playF  = females.slice(0, fNeeded);
+    const benchM = males.slice(mNeeded);
+    const benchF = females.slice(fNeeded);
+
+    // Swap with bench if same 4 players have already played together
+    for (let i = 0; i < dist.mm; i++)
+        tryBreakDuplicate(playM, i * 4, 4, benchM);
+    for (let i = 0; i < dist.ff; i++)
+        tryBreakDuplicate(playF, i * 4, 4, benchF);
+    for (let i = 0; i < dist.mf; i++)
+        tryBreakDuplicateMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
+
+    const activeIds = new Set([...playM, ...playF].map(p => p.id));
     const sitting   = players.filter(p => !activeIds.has(p.id));
     const matches = [];
     let cn = 1;
     for (let i = 0; i < dist.mm; i++)
-        matches.push(makeMatch(cn++, 'MM', activeMales.slice(i * 4, i * 4 + 4)));
+        matches.push(makeMatch(cn++, 'MM', playM.slice(i * 4, i * 4 + 4)));
     for (let i = 0; i < dist.ff; i++)
-        matches.push(makeMatch(cn++, 'FF', activeFemales.slice(i * 4, i * 4 + 4)));
-    const mfM = activeMales.slice(dist.mm * 4);
-    const mfF = activeFemales.slice(dist.ff * 4);
+        matches.push(makeMatch(cn++, 'FF', playF.slice(i * 4, i * 4 + 4)));
+    const mfM = playM.slice(dist.mm * 4);
+    const mfF = playF.slice(dist.ff * 4);
     for (let i = 0; i < dist.mf; i++)
         matches.push(makeMatch(cn++, 'MF', [...mfM.slice(i * 2, i * 2 + 2), ...mfF.slice(i * 2, i * 2 + 2)]));
     rounds.push({ id: rounds.length + 1, matches, sit: sitting.map(p => p.id) });
