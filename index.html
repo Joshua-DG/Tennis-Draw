@@ -168,6 +168,10 @@
         .preview-red  { background: #fff5f5; color: #e53e3e; }
         .preview-gray { background: #f7fafc; color: #a0aec0; }
         .ratio-pills { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+        .time-split { display: flex; align-items: center; gap: 2px; padding: 5px 8px; border: 1.5px solid #e2e8f0; border-radius: 7px; background: white; }
+        .time-split:focus-within { border-color: #2b6cb0; box-shadow: 0 0 0 3px rgba(43,108,176,0.1); }
+        .time-split select { border: none; outline: none; background: transparent; font-size: 14px; color: #2d3748; padding: 0; cursor: pointer; }
+        .time-split .sep { color: #a0aec0; font-size: 13px; padding: 0 1px; }
         .ratio-pill { padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
         .ratio-sep { color: #a0aec0; font-weight: 700; }
 
@@ -240,13 +244,21 @@
                         <option>6.5</option><option>7.0</option>
                     </select>
                 </div>
-                <div class="field" style="flex:0 0 auto;min-width:88px">
+                <div class="field" style="flex:0 0 auto">
                     <label>참여 시작</label>
-                    <input id="p-avail-from" type="time" step="600" placeholder="" title="미입력 시 세션 시작부터">
+                    <div class="time-split" title="미입력 시 세션 시작부터">
+                        <select id="p-avail-from-h"></select>
+                        <span class="sep">:</span>
+                        <select id="p-avail-from-m"></select>
+                    </div>
                 </div>
-                <div class="field" style="flex:0 0 auto;min-width:88px">
+                <div class="field" style="flex:0 0 auto">
                     <label>참여 종료</label>
-                    <input id="p-avail-until" type="time" step="600" placeholder="" title="미입력 시 세션 종료까지">
+                    <div class="time-split" title="미입력 시 세션 종료까지">
+                        <select id="p-avail-until-h"></select>
+                        <span class="sep">:</span>
+                        <select id="p-avail-until-m"></select>
+                    </div>
                 </div>
                 <button class="btn btn-primary" style="align-self:flex-end" onclick="addPlayer()">+ 추가</button>
             </div>
@@ -431,6 +443,29 @@ function hydrate() {
 }
 function setSetting(k, v) { cfg[k] = v; persist(); }
 
+function buildHourOpts(selected) {
+    let html = '<option value="">--</option>';
+    for (let h = 6; h <= 23; h++) {
+        const v = String(h).padStart(2, '0');
+        html += `<option value="${v}"${v === selected ? ' selected' : ''}>${v}</option>`;
+    }
+    return html;
+}
+function buildMinOpts(selected) {
+    return ['00','10','20','30','40','50']
+        .map(m => `<option value="${m}"${m === selected ? ' selected' : ''}>${m}</option>`).join('');
+}
+function getAvailTime(prefix) {
+    const h = document.getElementById(prefix + '-h').value;
+    if (!h) return null;
+    return `${h}:${document.getElementById(prefix + '-m').value}`;
+}
+function setAvailTime(prefix) {
+    document.getElementById(prefix + '-h').value = '';
+    document.getElementById(prefix + '-m').value = '00';
+}
+
+
 // ──────────────────────────────────────────────
 // Navigation
 // ──────────────────────────────────────────────
@@ -582,12 +617,12 @@ function addPlayer() {
         name,
         gender:     document.getElementById('p-gender').value,
         ntrp:       +(document.getElementById('p-ntrp').value),
-        availFrom:  document.getElementById('p-avail-from').value  || null,
-        availUntil: document.getElementById('p-avail-until').value || null,
+        availFrom:  getAvailTime('p-avail-from'),
+        availUntil: getAvailTime('p-avail-until'),
     });
     document.getElementById('p-name').value = '';
-    document.getElementById('p-avail-from').value  = '';
-    document.getElementById('p-avail-until').value = '';
+    setAvailTime('p-avail-from');
+    setAvailTime('p-avail-until');
     persist();
     renderPlayers();
 }
@@ -619,8 +654,8 @@ function savePlayer(id) {
     p.name       = name;
     p.gender     = document.getElementById('edit-gender').value;
     p.ntrp       = +(document.getElementById('edit-ntrp').value);
-    p.availFrom  = document.getElementById('edit-avail-from').value  || null;
-    p.availUntil = document.getElementById('edit-avail-until').value || null;
+    p.availFrom  = getAvailTime('edit-avail-from');
+    p.availUntil = getAvailTime('edit-avail-until');
     editingId = null;
     persist();
     renderPlayers();
@@ -964,9 +999,17 @@ function renderPlayers() {
                         </select></td>
                         <td><select id="edit-ntrp">${ntrpOpts(p.ntrp)}</select></td>
                         <td style="white-space:nowrap">
-                            <input id="edit-avail-from"  type="time" step="600" value="${p.availFrom||''}"  style="width:100px" title="참여 시작">
-                            <span style="color:#a0aec0;font-size:11px">~</span>
-                            <input id="edit-avail-until" type="time" step="600" value="${p.availUntil||''}" style="width:100px" title="참여 종료">
+                            <div class="time-split" style="display:inline-flex" title="참여 시작">
+                                <select id="edit-avail-from-h">${buildHourOpts(p.availFrom ? p.availFrom.split(':')[0] : '')}</select>
+                                <span class="sep">:</span>
+                                <select id="edit-avail-from-m">${buildMinOpts(p.availFrom ? p.availFrom.split(':')[1] : '00')}</select>
+                            </div>
+                            <span style="color:#a0aec0;font-size:11px;margin:0 4px">~</span>
+                            <div class="time-split" style="display:inline-flex" title="참여 종료">
+                                <select id="edit-avail-until-h">${buildHourOpts(p.availUntil ? p.availUntil.split(':')[0] : '')}</select>
+                                <span class="sep">:</span>
+                                <select id="edit-avail-until-m">${buildMinOpts(p.availUntil ? p.availUntil.split(':')[1] : '00')}</select>
+                            </div>
                         </td>
                         <td style="white-space:nowrap;display:flex;gap:6px">
                             <button class="btn btn-primary btn-sm" onclick="savePlayer(${p.id})">저장</button>
@@ -1235,6 +1278,10 @@ async function copySchedule() {
 // Init
 // ──────────────────────────────────────────────
 hydrate();
+document.getElementById('p-avail-from-h').innerHTML  = buildHourOpts('');
+document.getElementById('p-avail-from-m').innerHTML  = buildMinOpts('00');
+document.getElementById('p-avail-until-h').innerHTML = buildHourOpts('');
+document.getElementById('p-avail-until-m').innerHTML = buildMinOpts('00');
 renderPlayers();
 renderSchedule();
 renderStats();
