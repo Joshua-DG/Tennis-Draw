@@ -359,7 +359,7 @@
         </div>
         <div class="sched-toolbar" style="margin-top:-6px">
             <button class="btn btn-gray" onclick="delLastRound()">↩ 마지막 삭제</button>
-            <button class="btn btn-gray btn-sm" onclick="copySchedule()">📋 복사</button>
+            <button class="btn btn-gray btn-sm" onclick="copySchedule()">📸 이미지 복사</button>
             <button class="btn btn-red btn-sm" onclick="resetRounds()">🗑 전체 초기화</button>
         </div>
         <div id="schedule-list"></div>
@@ -997,32 +997,49 @@ function closeMatchModal() {
 }
 
 // ──────────────────────────────────────────────
-// Copy schedule as text
+// Copy schedule as image
 // ──────────────────────────────────────────────
-function copySchedule() {
+async function copySchedule() {
     if (!rounds.length) { alert('대진표가 없습니다.'); return; }
-    const typeText = { MM: '[남복]', FF: '[여복]', MF: '[혼합]' };
-    const lines = rounds.map(r => {
-        const slot = roundTimeSlot(r.id - 1);
-        const ml = r.matches.map(m => {
-            const t = m.type ? typeText[m.type] + ' ' : '';
-            const ta = m.a.map(id => byId(id)?.name || '?').join('+');
-            const tb = m.b.map(id => byId(id)?.name || '?').join('+');
-            return `  코트${m.court} ${t}: ${ta} VS ${tb}`;
+
+    if (typeof html2canvas === 'undefined') {
+        alert('이미지 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해주세요.'); return;
+    }
+
+    const wrap = document.querySelector('#schedule-list .table-wrap');
+    const el   = document.getElementById('schedule-list');
+    if (!wrap || !el) return;
+
+    // 테이블이 잘리지 않도록 overflow 임시 해제
+    const prevOverflow = wrap.style.overflow;
+    wrap.style.overflow = 'visible';
+
+    try {
+        const canvas = await html2canvas(el, {
+            scale: 2,
+            backgroundColor: '#f0f4f8',
+            scrollX: -window.scrollX,
+            scrollY: -window.scrollY,
+            useCORS: true,
         });
-        const sl = r.sit.length ? `  대기: ${r.sit.map(id => byId(id)?.name || '?').join(', ')}` : '';
-        return [`[라운드 ${r.id}] ${slot}`, ...ml, ...(sl ? [sl] : [])].join('\n');
-    });
-    const text = lines.join('\n\n');
-    navigator.clipboard.writeText(text)
-        .then(() => alert('대진표가 클립보드에 복사되었습니다.'))
-        .catch(() => {
-            const ta = document.createElement('textarea');
-            ta.value = text; document.body.appendChild(ta);
-            ta.select(); document.execCommand('copy');
-            document.body.removeChild(ta);
-            alert('대진표가 클립보드에 복사되었습니다.');
-        });
+        wrap.style.overflow = prevOverflow;
+
+        canvas.toBlob(async blob => {
+            try {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                alert('이미지가 클립보드에 복사되었습니다.\n카카오톡 · 메모 등에 바로 붙여넣기 할 수 있습니다.');
+            } catch {
+                // 클립보드 이미지 미지원 브라우저 → 파일 다운로드
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '테니스대진표.png'; a.click();
+                URL.revokeObjectURL(url);
+            }
+        }, 'image/png');
+    } catch (e) {
+        wrap.style.overflow = prevOverflow;
+        alert('이미지 변환에 실패했습니다.');
+    }
 }
 
 // ──────────────────────────────────────────────
@@ -1040,6 +1057,8 @@ document.getElementById('p-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') addPlayer();
 });
 </script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
 
 <!-- Match edit modal -->
 <div id="match-modal" class="match-modal-overlay" style="display:none" onclick="if(event.target===this)closeMatchModal()">
