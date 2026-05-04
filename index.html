@@ -242,11 +242,11 @@
                 </div>
                 <div class="field" style="flex:0 0 auto;min-width:88px">
                     <label>참여 시작</label>
-                    <input id="p-avail-from" type="time" placeholder="" title="미입력 시 세션 시작부터">
+                    <input id="p-avail-from" type="time" step="600" placeholder="" title="미입력 시 세션 시작부터">
                 </div>
                 <div class="field" style="flex:0 0 auto;min-width:88px">
                     <label>참여 종료</label>
-                    <input id="p-avail-until" type="time" placeholder="" title="미입력 시 세션 종료까지">
+                    <input id="p-avail-until" type="time" step="600" placeholder="" title="미입력 시 세션 종료까지">
                 </div>
                 <button class="btn btn-primary" style="align-self:flex-end" onclick="addPlayer()">+ 추가</button>
             </div>
@@ -964,9 +964,9 @@ function renderPlayers() {
                         </select></td>
                         <td><select id="edit-ntrp">${ntrpOpts(p.ntrp)}</select></td>
                         <td style="white-space:nowrap">
-                            <input id="edit-avail-from"  type="time" value="${p.availFrom||''}"  style="width:100px" title="참여 시작">
+                            <input id="edit-avail-from"  type="time" step="600" value="${p.availFrom||''}"  style="width:100px" title="참여 시작">
                             <span style="color:#a0aec0;font-size:11px">~</span>
-                            <input id="edit-avail-until" type="time" value="${p.availUntil||''}" style="width:100px" title="참여 종료">
+                            <input id="edit-avail-until" type="time" step="600" value="${p.availUntil||''}" style="width:100px" title="참여 종료">
                         </td>
                         <td style="white-space:nowrap;display:flex;gap:6px">
                             <button class="btn btn-primary btn-sm" onclick="savePlayer(${p.id})">저장</button>
