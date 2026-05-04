@@ -174,6 +174,14 @@
         .flex-between { display: flex; justify-content: space-between; align-items: center; }
         .sched-toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 
+        /* Match edit */
+        .court-cell { cursor: pointer; }
+        .court-cell:hover { background: #ebf8ff !important; }
+        .match-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .match-modal-box { background: white; border-radius: 12px; padding: 24px; width: min(460px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .edit-team-label { font-size: 11px; font-weight: 700; color: #718096; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+        .edit-vs { text-align: center; color: #a0aec0; font-weight: 700; font-size: 13px; margin: 10px 0; }
+
         @media (max-width: 560px) {
             header { padding: 16px; }
             main { padding: 12px; }
@@ -374,10 +382,11 @@
 // ──────────────────────────────────────────────
 // State
 // ──────────────────────────────────────────────
-let players   = [];
-let rounds    = [];
-let nextId    = 1;
-let editingId = null;
+let players        = [];
+let rounds         = [];
+let nextId         = 1;
+let editingId      = null;
+let editingMatchRef = null;
 let cfg = {
     courts: 2, gameType: 'doubles',
     startTime: '10:00', gameMins: 30, endTime: '12:00', warmupMins: 0,
@@ -827,13 +836,14 @@ function renderSchedule() {
         const timeSlot = roundTimeSlot(r.id - 1);
 
         const courtCells = Array.from({ length: maxCourts }, (_, i) => {
-            const m = r.matches.find(m => m.court === i + 1);
-            if (!m) return `<td style="color:#cbd5e0;text-align:center">-</td>`;
+            const mi = r.matches.findIndex(m => m.court === i + 1);
+            if (mi < 0) return `<td style="color:#cbd5e0;text-align:center">-</td>`;
+            const m = r.matches[mi];
             const tl = m.type ? TYPE_LABEL[m.type] : null;
             const ta = m.a.map(id => byId(id)?.name || '?').join(' · ');
             const tb = m.b.map(id => byId(id)?.name || '?').join(' · ');
             const pill = tl ? `<span class="type-pill ${tl[0]}" style="margin-right:6px;vertical-align:middle">${tl[1]}</span>` : '';
-            return `<td style="white-space:nowrap">${pill}<span style="font-weight:600">${esc(ta)}</span><span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span><span style="font-weight:600">${esc(tb)}</span></td>`;
+            return `<td class="court-cell" style="white-space:nowrap" onclick="openMatchEdit(${r.id},${mi})" title="클릭하여 선수 수정">${pill}<span style="font-weight:600">${esc(ta)}</span><span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span><span style="font-weight:600">${esc(tb)}</span></td>`;
         }).join('');
 
         const sitStr = r.sit.length
@@ -897,6 +907,96 @@ function renderStats() {
 }
 
 // ──────────────────────────────────────────────
+// Match edit modal
+// ──────────────────────────────────────────────
+function openMatchEdit(roundId, matchIdx) {
+    const round = rounds.find(r => r.id === roundId);
+    if (!round) return;
+    const match = round.matches[matchIdx];
+    if (!match) return;
+    editingMatchRef = { roundId, matchIdx };
+
+    const [cls, label] = match.type ? TYPE_LABEL[match.type] : ['', '단식'];
+    const isDoubles = match.a.length === 2;
+
+    const playerSelect = (pid, slot) => `
+        <select class="match-edit-slot" data-slot="${slot}" style="flex:1;min-width:130px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-family:inherit">
+            ${players.map(p => `<option value="${p.id}"${p.id === pid ? ' selected' : ''}>${esc(p.name)} (${p.gender === 'M' ? '남' : '여'} · ${p.ntrp})</option>`).join('')}
+        </select>`;
+
+    let fieldsHtml;
+    if (isDoubles) {
+        fieldsHtml = `
+            <div style="margin-bottom:14px">
+                <span class="type-pill ${cls}">${label}</span>
+            </div>
+            <div style="margin-bottom:6px" class="edit-team-label">팀 A</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                ${playerSelect(match.a[0], 0)}${playerSelect(match.a[1], 1)}
+            </div>
+            <div class="edit-vs">vs</div>
+            <div style="margin-bottom:6px" class="edit-team-label">팀 B</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                ${playerSelect(match.b[0], 2)}${playerSelect(match.b[1], 3)}
+            </div>`;
+    } else {
+        fieldsHtml = `
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                ${playerSelect(match.a[0], 0)}
+                <span style="color:#a0aec0;font-weight:700">vs</span>
+                ${playerSelect(match.b[0], 2)}
+            </div>`;
+    }
+
+    document.getElementById('edit-modal-title').textContent = `라운드 ${roundId} · 코트 ${match.court}`;
+    document.getElementById('edit-modal-fields').innerHTML = fieldsHtml;
+    document.getElementById('match-modal').style.display = 'flex';
+}
+
+function saveMatchEdit() {
+    if (!editingMatchRef) return;
+    const { roundId, matchIdx } = editingMatchRef;
+    const round = rounds.find(r => r.id === roundId);
+    if (!round) return;
+    const match = round.matches[matchIdx];
+
+    const slots = [...document.querySelectorAll('.match-edit-slot')];
+    const ids = slots.map(s => +s.value);
+
+    if (new Set(ids).size !== ids.length) {
+        alert('같은 선수를 중복으로 선택할 수 없습니다.'); return;
+    }
+    const otherIds = round.matches.filter((_, i) => i !== matchIdx).flatMap(m => [...m.a, ...m.b]);
+    const conflict = ids.find(id => otherIds.includes(id));
+    if (conflict) {
+        const p = byId(conflict);
+        alert(`'${p ? p.name : '?'}'은(는) 이미 같은 라운드의 다른 코트에 배정되어 있습니다.`); return;
+    }
+
+    if (match.a.length === 2) {
+        match.a = [ids[0], ids[1]];
+        match.b = [ids[2], ids[3]];
+    } else {
+        match.a = [ids[0]];
+        match.b = [ids[2]];
+    }
+
+    const inPlay = new Set(round.matches.flatMap(m => [...m.a, ...m.b]));
+    round.sit = players.filter(p => !inPlay.has(p.id)).map(p => p.id);
+
+    editingMatchRef = null;
+    document.getElementById('match-modal').style.display = 'none';
+    persist();
+    renderSchedule();
+    renderStats();
+}
+
+function closeMatchModal() {
+    editingMatchRef = null;
+    document.getElementById('match-modal').style.display = 'none';
+}
+
+// ──────────────────────────────────────────────
 // Copy schedule as text
 // ──────────────────────────────────────────────
 function copySchedule() {
@@ -940,5 +1040,21 @@ document.getElementById('p-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') addPlayer();
 });
 </script>
+
+<!-- Match edit modal -->
+<div id="match-modal" class="match-modal-overlay" style="display:none" onclick="if(event.target===this)closeMatchModal()">
+    <div class="match-modal-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+            <span style="font-weight:700;font-size:16px;color:#1a202c">대진 수정 — <span id="edit-modal-title"></span></span>
+            <button onclick="closeMatchModal()" style="background:none;border:none;font-size:20px;color:#a0aec0;cursor:pointer;line-height:1">×</button>
+        </div>
+        <div id="edit-modal-fields"></div>
+        <div style="display:flex;gap:10px;margin-top:22px">
+            <button class="btn btn-primary" style="flex:1" onclick="saveMatchEdit()">저장</button>
+            <button class="btn btn-gray" style="flex:1" onclick="closeMatchModal()">취소</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
