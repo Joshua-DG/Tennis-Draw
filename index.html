@@ -157,8 +157,9 @@
         /* Settings */
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
         .info-list { list-style: none; }
-        .info-list li { padding: 9px 0; font-size: 14px; color: #4a5568; border-bottom: 1px solid #f0f0f0; line-height: 1.6; }
+        .info-list li { display: flex; gap: 12px; padding: 9px 0; font-size: 14px; color: #4a5568; border-bottom: 1px solid #f0f0f0; line-height: 1.6; }
         .info-list li:last-child { border-bottom: none; }
+        .info-title { flex: 0 0 160px; white-space: nowrap; }
         .preview-box {
             margin-top: 14px;
             padding: 10px 14px;
@@ -170,10 +171,12 @@
         .preview-red  { background: #fff5f5; color: #e53e3e; }
         .preview-gray { background: #f7fafc; color: #a0aec0; }
         .ratio-pills { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
-        .time-split { display: flex; align-items: center; gap: 2px; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 7px; background: white; }
-        .time-split:focus-within { border-color: #2b6cb0; box-shadow: 0 0 0 3px rgba(43,108,176,0.1); }
+        .time-range { display: flex; align-items: center; gap: 6px; }
+        .time-range-sep { color: #a0aec0; font-size: 13px; font-weight: 500; }
+        .time-split { display: flex; align-items: center; gap: 2px; padding: 8px 8px; border: 1.5px solid #e2e8f0; border-radius: 7px; background: #f8fafc; }
+        .time-split:focus-within { border-color: #2b6cb0; box-shadow: 0 0 0 3px rgba(43,108,176,0.1); background: white; }
         .time-split select { border: none; outline: none; background: transparent; font-size: 14px; color: #2d3748; padding: 0; cursor: pointer; }
-        .time-split .sep { color: #a0aec0; font-size: 13px; padding: 0 1px; }
+        .time-split .sep { color: #cbd5e0; font-size: 13px; padding: 0 1px; }
         .player-chip { display: inline-block; cursor: grab; padding: 1px 5px; border-radius: 4px; transition: background 0.1s; }
         .player-chip:hover { background: #ebf8ff; }
         .player-chip.drag-src { opacity: 0.4; }
@@ -228,18 +231,14 @@
         <div class="card">
             <div class="card-title">참가자 추가</div>
             <div class="form-row">
-                <div class="field">
-                    <label>이름</label>
-                    <input id="p-name" type="text" placeholder="홍길동">
-                </div>
-                <div class="field" style="flex:0 0 auto;min-width:68px">
+                <div class="field" style="flex:0 0 auto;min-width:80px">
                     <label>성별</label>
                     <select id="p-gender">
                         <option value="M">남</option>
                         <option value="F">여</option>
                     </select>
                 </div>
-                <div class="field" style="flex:0 0 auto;min-width:80px">
+                <div class="field" style="flex:0 0 auto;min-width:96px">
                     <label>NTRP</label>
                     <select id="p-ntrp">
                         <option>2.0</option><option>2.5</option>
@@ -251,20 +250,24 @@
                     </select>
                 </div>
                 <div class="field" style="flex:0 0 auto">
-                    <label>참여 시작</label>
-                    <div class="time-split" title="미입력 시 세션 시작부터">
-                        <select id="p-avail-from-h"></select>
-                        <span class="sep">:</span>
-                        <select id="p-avail-from-m"></select>
+                    <label>참여 가능 시간</label>
+                    <div class="time-range">
+                        <div class="time-split" title="미입력 시 세션 시작부터">
+                            <select id="p-avail-from-h"></select>
+                            <span class="sep">:</span>
+                            <select id="p-avail-from-m"></select>
+                        </div>
+                        <span class="time-range-sep">~</span>
+                        <div class="time-split" title="미입력 시 세션 종료까지">
+                            <select id="p-avail-until-h"></select>
+                            <span class="sep">:</span>
+                            <select id="p-avail-until-m"></select>
+                        </div>
                     </div>
                 </div>
-                <div class="field" style="flex:0 0 auto">
-                    <label>참여 종료</label>
-                    <div class="time-split" title="미입력 시 세션 종료까지">
-                        <select id="p-avail-until-h"></select>
-                        <span class="sep">:</span>
-                        <select id="p-avail-until-m"></select>
-                    </div>
+                <div class="field" style="min-width:80px">
+                    <label>이름</label>
+                    <input id="p-name" type="text" placeholder="홍길동">
                 </div>
                 <button class="btn btn-primary" style="align-self:flex-end" onclick="addPlayer()">+ 추가</button>
             </div>
@@ -370,12 +373,12 @@
         <div class="card">
             <div class="card-title">우선순위 원칙</div>
             <ul class="info-list">
-                <li>① <strong>게임 횟수 균형</strong> — 게임을 적게 한 선수를 우선 배정합니다</li>
-                <li>② <strong>3연속 휴식 방지</strong> — 2라운드 연속 휴식 선수는 반드시 다음 라운드에 배정합니다 (소프트 우선순위가 아닌 강제 적용)</li>
-                <li>③ <strong>코트별 수준 배분</strong> — NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</li>
-                <li>④ <strong>팀 내 밸런스</strong> — (1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</li>
-                <li>⑤ <strong>중복 매치 방지</strong> — 동일한 4명이 같은 코트에 다시 배정되지 않도록 대기 선수와 교체합니다</li>
-                <li>⑥ <strong>페어 다양성</strong> — 같은 선수와 자주 같은 코트에 배정되지 않도록 대기 선수와 교체해 최대한 다양한 조합을 만듭니다</li>
+                <li><span class="info-title">① <strong>게임 횟수 균형</strong></span><span>게임을 적게 한 선수를 우선 배정합니다</span></li>
+                <li><span class="info-title">② <strong>3연속 휴식 방지</strong></span><span>2라운드 연속 휴식 선수는 반드시 다음 라운드에 배정합니다 (소프트 우선순위가 아닌 강제 적용)</span></li>
+                <li><span class="info-title">③ <strong>코트별 수준 배분</strong></span><span>NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</span></li>
+                <li><span class="info-title">④ <strong>팀 내 밸런스</strong></span><span>(1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</span></li>
+                <li><span class="info-title">⑤ <strong>중복 매치 방지</strong></span><span>동일한 4명이 같은 코트에 다시 배정되지 않도록 대기 선수와 교체합니다</span></li>
+                <li><span class="info-title">⑥ <strong>페어 다양성</strong></span><span>같은 선수와 자주 같은 코트에 배정되지 않도록 대기 선수와 교체해 최대한 다양한 조합을 만듭니다</span></li>
             </ul>
         </div>
 
