@@ -604,7 +604,7 @@ function updateRatioSuggest() {
     if (s.ff > 0) parts.push(`여복 ${s.ff}`);
     if (s.mf > 0) parts.push(`혼합 ${s.mf}`);
     el.innerHTML = `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:13px;color:#718096">💡 남 ${M}명·여 ${F}명 기준 추천: <strong>${parts.join(' : ')}</strong></span>
+        <span style="font-size:13px;color:#718096">💡 남 ${M}명·여 ${F}명 기준 추천 - <strong>${parts.join(' : ')}</strong></span>
         <button class="btn btn-sm btn-gray" onclick="applyRatioSuggest(${s.mm},${s.ff},${s.mf})">적용</button>
     </div>`;
 }
@@ -1121,8 +1121,7 @@ function renderPlayers() {
 let dragSrc = null;
 
 function onChipDragStart(e) {
-    const pos = e.currentTarget.dataset.pos.split(',');
-    dragSrc = { ri: +pos[0], mi: +pos[1], team: pos[2], pi: +pos[3] };
+    dragSrc = e.currentTarget.dataset.pos;
     e.currentTarget.classList.add('drag-src');
     e.dataTransfer.effectAllowed = 'move';
 }
@@ -1140,22 +1139,59 @@ function onChipDrop(e) {
     e.preventDefault();
     e.currentTarget.classList.remove('drag-over');
     if (!dragSrc) return;
-    const pos = e.currentTarget.dataset.pos.split(',');
-    const dst = { ri: +pos[0], mi: +pos[1], team: pos[2], pi: +pos[3] };
-    if (dragSrc.ri === dst.ri && dragSrc.mi === dst.mi && dragSrc.team === dst.team && dragSrc.pi === dst.pi) return;
-    const srcRound = rounds.find(r => r.id === dragSrc.ri);
-    const dstRound = rounds.find(r => r.id === dst.ri);
-    if (!srcRound || !dstRound) return;
-    const srcMatch = srcRound.matches[dragSrc.mi];
-    const dstMatch = dstRound.matches[dst.mi];
-    if (!srcMatch || !dstMatch) return;
-    const srcId = srcMatch[dragSrc.team][dragSrc.pi];
-    const dstId = dstMatch[dst.team][dst.pi];
-    srcMatch[dragSrc.team][dragSrc.pi] = dstId;
-    dstMatch[dst.team][dst.pi] = srcId;
-    recalcSit(srcRound);
-    if (dst.ri !== dragSrc.ri) recalcSit(dstRound);
+    const src = dragSrc.split(',');
+    const dst = e.currentTarget.dataset.pos.split(',');
+    if (dragSrc === e.currentTarget.dataset.pos) return;
     dragSrc = null;
+
+    const srcType = src[0], dstType = dst[0];
+
+    if (srcType === 'match' && dstType === 'match') {
+        // 코트 ↔ 코트
+        const [, sri, smi, steam, spi] = src;
+        const [, dri, dmi, dteam, dpi] = dst;
+        const srcRound = rounds.find(r => r.id === +sri);
+        const dstRound = rounds.find(r => r.id === +dri);
+        if (!srcRound || !dstRound) return;
+        const srcMatch = srcRound.matches[+smi];
+        const dstMatch = dstRound.matches[+dmi];
+        if (!srcMatch || !dstMatch) return;
+        const tmp = srcMatch[steam][+spi];
+        srcMatch[steam][+spi] = dstMatch[dteam][+dpi];
+        dstMatch[dteam][+dpi] = tmp;
+        recalcSit(srcRound);
+        if (+dri !== +sri) recalcSit(dstRound);
+
+    } else if (srcType === 'sit' && dstType === 'match') {
+        // 대기 → 코트
+        const [, sri, ssi] = src;
+        const [, dri, dmi, dteam, dpi] = dst;
+        const srcRound = rounds.find(r => r.id === +sri);
+        const dstRound = rounds.find(r => r.id === +dri);
+        if (!srcRound || !dstRound) return;
+        const dstMatch = dstRound.matches[+dmi];
+        if (!dstMatch) return;
+        const sitId   = srcRound.sit[+ssi];
+        dstMatch[dteam][+dpi] = sitId;
+        recalcSit(srcRound);
+        if (+dri !== +sri) recalcSit(dstRound);
+
+    } else if (srcType === 'match' && dstType === 'sit') {
+        // 코트 → 대기
+        const [, sri, smi, steam, spi] = src;
+        const [, dri, dsi] = dst;
+        const srcRound = rounds.find(r => r.id === +sri);
+        const dstRound = rounds.find(r => r.id === +dri);
+        if (!srcRound || !dstRound) return;
+        const srcMatch = srcRound.matches[+smi];
+        if (!srcMatch) return;
+        const sitId    = dstRound.sit[+dsi];
+        srcMatch[steam][+spi] = sitId;
+        recalcSit(srcRound);
+        if (+dri !== +sri) recalcSit(dstRound);
+    }
+    // sit ↔ sit 는 의미 없으므로 생략
+
     persist();
     renderSchedule();
     renderStats();
@@ -1205,7 +1241,7 @@ function renderSchedule() {
             const pill = tl ? `<span class="type-pill ${tl[0]}" style="margin-right:6px;vertical-align:middle">${tl[1]}</span>` : '';
             const chip = (team, pi, id) => {
                 const name = byId(id)?.name || '?';
-                return `<span class="player-chip" draggable="true" data-pos="${r.id},${mi},${team},${pi}" ondragstart="onChipDragStart(event)" ondragend="onChipDragEnd(event)" ondragover="onChipDragOver(event)" ondragleave="onChipDragLeave(event)" ondrop="onChipDrop(event)" onclick="event.stopPropagation()">${esc(name)}</span>`;
+                return `<span class="player-chip" draggable="true" data-pos="match,${r.id},${mi},${team},${pi}" ondragstart="onChipDragStart(event)" ondragend="onChipDragEnd(event)" ondragover="onChipDragOver(event)" ondragleave="onChipDragLeave(event)" ondrop="onChipDrop(event)" onclick="event.stopPropagation()">${esc(name)}</span>`;
             };
             const aChips = m.a.map((id, pi) => chip('a', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
             const bChips = m.b.map((id, pi) => chip('b', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
@@ -1213,7 +1249,10 @@ function renderSchedule() {
         }).join('');
 
         const sitStr = r.sit.length
-            ? r.sit.map(id => { const p = byId(id); return p ? esc(p.name) : '?'; }).join(', ')
+            ? r.sit.map((id, si) => {
+                const name = byId(id)?.name || '?';
+                return `<span class="player-chip" draggable="true" data-pos="sit,${r.id},${si}" ondragstart="onChipDragStart(event)" ondragend="onChipDragEnd(event)" ondragover="onChipDragOver(event)" ondragleave="onChipDragLeave(event)" ondrop="onChipDrop(event)" onclick="event.stopPropagation()" style="color:#718096">${esc(name)}</span>`;
+              }).join(' ')
             : '<span style="color:#a0aec0">-</span>';
 
         return `<tr>
