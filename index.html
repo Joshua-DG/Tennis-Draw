@@ -370,8 +370,8 @@
         <div class="card">
             <div class="card-title">우선순위 원칙</div>
             <ul class="info-list">
-                <li>① <strong>연속 휴식 방지</strong> — 직전 라운드에 쉰 선수를 최우선 배정합니다</li>
-                <li>② <strong>게임 횟수 균형</strong> — 게임을 적게 한 선수를 우선 배정합니다</li>
+                <li>① <strong>게임 횟수 균형</strong> — 게임을 적게 한 선수를 우선 배정합니다</li>
+                <li>② <strong>3연속 휴식 방지</strong> — 2라운드 연속 휴식 선수는 반드시 다음 라운드에 배정합니다 (소프트 우선순위가 아닌 강제 적용)</li>
                 <li>③ <strong>코트별 수준 배분</strong> — NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</li>
                 <li>④ <strong>팀 내 밸런스</strong> — (1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</li>
                 <li>⑤ <strong>중복 매치 방지</strong> — 동일한 4명이 같은 코트에 다시 배정되지 않도록 대기 선수와 교체합니다</li>
@@ -702,11 +702,14 @@ function prioritySorted(gender, roundIndex) {
     const ri = roundIndex ?? rounds.length;
     return players
         .filter(p => (gender == null || p.gender === gender) && isAvailable(p, ri))
-        .sort((a, b) =>
-            consRests(b.id) - consRests(a.id) ||
-            gameCnt(a.id)   - gameCnt(b.id)   ||
-            Math.random() - 0.5
-        );
+        .sort((a, b) => {
+            // 2연속 휴식 선수는 강제 최우선 (3연속 방지 하드 컨스트레인트)
+            const aForced = consRests(a.id) >= 2 ? 0 : 1;
+            const bForced = consRests(b.id) >= 2 ? 0 : 1;
+            return aForced - bForced ||
+                   gameCnt(a.id) - gameCnt(b.id) ||
+                   Math.random() - 0.5;
+        });
 }
 
 function makeMatch(courtNum, type, group) {
