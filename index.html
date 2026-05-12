@@ -377,8 +377,7 @@
                 <li><span class="info-title">② <strong>3연속 휴식 방지</strong></span><span>효율적인 대진 구성을 위해 2연속 휴식이 발생할 수 있으나, 3연속 휴식은 방지합니다</span></li>
                 <li><span class="info-title">③ <strong>코트별 수준 배분</strong></span><span>NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</span></li>
                 <li><span class="info-title">④ <strong>팀 내 밸런스</strong></span><span>(1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</span></li>
-                <li><span class="info-title">⑤ <strong>중복 매치 방지</strong></span><span>동일한 4명이 같은 코트에 다시 배정되지 않도록 대기 선수와 교체합니다</span></li>
-                <li><span class="info-title">⑥ <strong>페어 다양성</strong></span><span>같은 선수와 자주 같은 코트에 배정되지 않도록 대기 선수와 교체해 최대한 다양한 조합을 만듭니다</span></li>
+                <li><span class="info-title">⑤ <strong>페어 다양성</strong></span><span>같은 선수와 같은 코트에 배정되는 빈도를 낮춰 최대한 다양한 조합을 만듭니다 (동일 4인 반복도 자연스럽게 방지)</span></li>
             </ul>
         </div>
 
@@ -837,60 +836,6 @@ function tryReduceCoPlayMF(playM, mStart, playF, fStart, benchM, benchF) {
     }
 }
 
-// Returns true if these player IDs have all appeared together in a single past match
-function hasPlayedTogether(ids) {
-    const s = new Set(ids);
-    return rounds.some(r =>
-        r.matches.some(m => {
-            const mids = [...m.a, ...m.b];
-            return mids.length === s.size && mids.every(id => s.has(id));
-        })
-    );
-}
-
-// Try to swap one player in arr[start..start+len] with a bench player to break a duplicate.
-// Mutates arr and bench in-place.
-function tryBreakDuplicate(arr, start, len, bench) {
-    const ids = arr.slice(start, start + len).map(p => p.id);
-    if (!hasPlayedTogether(ids)) return;
-    for (let bi = 0; bi < bench.length; bi++) {
-        for (let gi = 0; gi < len; gi++) {
-            const alt = [...ids];
-            alt[gi] = bench[bi].id;
-            if (!hasPlayedTogether(alt)) {
-                const tmp = arr[start + gi];
-                arr[start + gi] = bench[bi];
-                bench[bi] = tmp;
-                return;
-            }
-        }
-    }
-}
-
-// MF variant: group spans two arrays (males + females). Gender constraint is respected.
-function tryBreakDuplicateMF(playM, mStart, playF, fStart, benchM, benchF) {
-    const ids = [playM[mStart].id, playM[mStart+1].id, playF[fStart].id, playF[fStart+1].id];
-    if (!hasPlayedTogether(ids)) return;
-    for (let bi = 0; bi < benchM.length; bi++) {
-        for (let gi = 0; gi < 2; gi++) {
-            const alt = [...ids]; alt[gi] = benchM[bi].id;
-            if (!hasPlayedTogether(alt)) {
-                const tmp = playM[mStart + gi]; playM[mStart + gi] = benchM[bi]; benchM[bi] = tmp;
-                return;
-            }
-        }
-    }
-    for (let bi = 0; bi < benchF.length; bi++) {
-        for (let gi = 0; gi < 2; gi++) {
-            const alt = [...ids]; alt[gi + 2] = benchF[bi].id;
-            if (!hasPlayedTogether(alt)) {
-                const tmp = playF[fStart + gi]; playF[fStart + gi] = benchF[bi]; benchF[bi] = tmp;
-                return;
-            }
-        }
-    }
-}
-
 function genDoublesRoundInternal() {
     if (players.length < 4) { alert('최소 4명이 필요합니다.'); return false; }
     const roundIndex = rounds.length;
@@ -907,14 +852,7 @@ function genDoublesRoundInternal() {
     const benchM = males.slice(mNeeded);
     const benchF = females.slice(fNeeded);
 
-    // ① 완전 동일 4인 중복 방지
-    for (let i = 0; i < dist.mm; i++)
-        tryBreakDuplicate(playM, i * 4, 4, benchM);
-    for (let i = 0; i < dist.ff; i++)
-        tryBreakDuplicate(playF, i * 4, 4, benchF);
-    for (let i = 0; i < dist.mf; i++)
-        tryBreakDuplicateMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
-    // ② 페어 다양성 — 같은 조합 빈도 낮추기
+    // 페어 다양성 — 같은 조합·동일 4인 반복 모두 낮추기
     for (let i = 0; i < dist.mm; i++)
         tryReduceCoPlay(playM, i * 4, 4, benchM);
     for (let i = 0; i < dist.ff; i++)
