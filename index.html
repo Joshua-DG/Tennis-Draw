@@ -105,7 +105,7 @@
             letter-spacing: 0.4px;
             border-bottom: 2px solid #e2e8f0;
         }
-        td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+        td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; background: white; }
         tr:last-child td { border-bottom: none; }
         .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; }
         .badge-m { background: #bee3f8; color: #1a4f8a; }
@@ -1191,10 +1191,10 @@ function renderSchedule() {
         const [h, m] = (cfg.startTime || '10:00').split(':').map(Number);
         const wStart = fmtTime(h * 60 + m);
         const wEnd   = fmtTime(h * 60 + m + cfg.warmupMins);
-        warmupRow = `<tr style="background:#fffbeb">
-            <td style="text-align:center;color:#b7791f;font-weight:700">-</td>
-            <td style="white-space:nowrap;color:#4a5568;font-size:13px">${wStart} ~ ${wEnd}</td>
-            <td colspan="${maxCourts + 1}" style="color:#b7791f;font-weight:600;font-size:13px">몸풀기 ${cfg.warmupMins}분</td>
+        warmupRow = `<tr>
+            <td style="text-align:center;color:#b7791f;font-weight:700;background:#fffbeb">-</td>
+            <td style="white-space:nowrap;color:#4a5568;font-size:13px;background:#fffbeb">${wStart} ~ ${wEnd}</td>
+            <td colspan="${maxCourts + 1}" style="color:#b7791f;font-weight:600;font-size:13px;background:#fffbeb">몸풀기 ${cfg.warmupMins}분</td>
         </tr>`;
     }
 
