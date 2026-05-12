@@ -62,6 +62,19 @@
             background: white;
             color: #2d3748;
             transition: border-color 0.15s;
+            height: 38px;
+            line-height: normal;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+        input[type="time"]::-webkit-date-and-time-value { text-align: left; }
+        select {
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23718096' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 14px;
+            padding-right: 28px;
         }
         input:focus, select:focus {
             outline: none;
@@ -175,7 +188,7 @@
         .time-range-sep { color: #a0aec0; font-size: 13px; font-weight: 500; }
         .time-split { display: flex; align-items: center; gap: 2px; padding: 8px 8px; border: 1.5px solid #e2e8f0; border-radius: 7px; background: #f8fafc; }
         .time-split:focus-within { border-color: #2b6cb0; box-shadow: 0 0 0 3px rgba(43,108,176,0.1); background: white; }
-        .time-split select { border: none; outline: none; background: transparent; font-size: 14px; color: #2d3748; padding: 0; cursor: pointer; }
+        .time-split select { border: none; outline: none; background: transparent; font-size: 14px; color: #2d3748; padding: 0; cursor: pointer; height: auto; background-image: none; padding-right: 0; }
         .time-split .sep { color: #cbd5e0; font-size: 13px; padding: 0 1px; }
         .player-chip { display: inline-block; cursor: grab; padding: 1px 5px; border-radius: 4px; transition: background 0.1s; }
         .player-chip:hover { background: #ebf8ff; }
@@ -416,9 +429,9 @@
             <button id="btn-gen-all" class="btn btn-teal" style="flex:1;padding:13px;font-size:15px;min-width:140px" onclick="genAllRounds()">⏭ 전체 생성</button>
         </div>
         <div class="sched-toolbar" style="margin-top:-6px">
-            <button class="btn btn-outline" onclick="delLastRound()">↩ 마지막 삭제</button>
-            <button class="btn btn-outline" style="padding-left:10px" onclick="copySchedule()">📸 이미지 복사</button>
-            <button class="btn btn-red" onclick="resetRounds()">🗑 전체 초기화</button>
+            <button class="btn btn-outline" onclick="delLastRound()">마지막 삭제</button>
+            <button class="btn btn-outline" onclick="copySchedule()">이미지 복사</button>
+            <button class="btn btn-red" onclick="resetRounds()">전체 초기화</button>
         </div>
         <div style="font-size:12px;color:#718096;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;padding:7px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:4px">
             <div>💡 <strong>셀 클릭</strong> — 해당 코트 선수 전체 수정</div>
