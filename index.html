@@ -439,6 +439,7 @@
         <div class="sched-toolbar" style="margin-top:-6px">
             <button class="btn btn-outline" onclick="delLastRound()">마지막 삭제</button>
             <button class="btn btn-outline" onclick="copySchedule()">이미지 복사</button>
+            <button class="btn btn-outline" onclick="exportScheduleCSV()">CSV 다운로드</button>
             <button class="btn btn-red" onclick="resetRounds()">전체 초기화</button>
         </div>
         <div style="font-size:12px;color:#718096;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;padding:7px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:4px">
@@ -1653,6 +1654,64 @@ function removePinnedMatch(pinId) {
     pinnedMatches = pinnedMatches.filter(p => p.id !== pinId);
     persist();
     renderPinnedList();
+}
+
+// ──────────────────────────────────────────────
+// Export schedule as CSV
+// ──────────────────────────────────────────────
+function exportScheduleCSV() {
+    if (!rounds.length) { alert('대진표가 없습니다.'); return; }
+    const maxCourts = Math.max(...rounds.map(r => r.matches.length));
+
+    const headers = ['라운드', '시간'];
+    for (let i = 1; i <= maxCourts; i++) headers.push(`코트 ${i}`);
+    headers.push('대기');
+    const csvRows = [headers];
+
+    if (cfg.warmupMins > 0) {
+        const [h, m] = (cfg.startTime || '10:00').split(':').map(Number);
+        const wStart = fmtTime(h * 60 + m);
+        const wEnd   = fmtTime(h * 60 + m + cfg.warmupMins);
+        const warmRow = ['-', `${wStart} ~ ${wEnd}`];
+        for (let i = 0; i < maxCourts; i++) warmRow.push(i === 0 ? `몸풀기 ${cfg.warmupMins}분` : '');
+        warmRow.push('');
+        csvRows.push(warmRow);
+    }
+
+    rounds.forEach(r => {
+        const timeSlot = roundTimeSlot(r.id - 1);
+        const row = [`R${r.id}`, timeSlot];
+        for (let i = 1; i <= maxCourts; i++) {
+            const mi = r.matches.findIndex(m => m.court === i);
+            if (mi < 0) { row.push('-'); continue; }
+            const m = r.matches[mi];
+            const ta = m.a.map(id => byId(id)?.name || '?').join('·');
+            const tb = m.b.map(id => byId(id)?.name || '?').join('·');
+            const typeLabel = m.type && TYPE_LABEL[m.type] ? `[${TYPE_LABEL[m.type][1]}] ` : '';
+            const pinMark = m.pinned ? '🔒 ' : '';
+            row.push(`${pinMark}${typeLabel}${ta} vs ${tb}`);
+        }
+        const sitNames = r.sit.map(id => byId(id)?.name || '?').join(', ');
+        row.push(sitNames || '-');
+        csvRows.push(row);
+    });
+
+    const csv = '﻿' + csvRows.map(row =>
+        row.map(cell => {
+            const s = String(cell ?? '');
+            return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }).join(',')
+    ).join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `대진표_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ──────────────────────────────────────────────
