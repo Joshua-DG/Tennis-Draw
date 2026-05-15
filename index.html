@@ -414,7 +414,7 @@
             <ul class="info-list">
                 <li><span class="info-title">① <strong>게임 횟수 균형</strong></span><span>게임을 적게 한 선수를 우선 배정합니다</span></li>
                 <li><span class="info-title">② <strong>3연속 휴식 방지</strong></span><span>효율적인 대진 구성을 위해 2연속 휴식이 발생할 수 있으나, 3연속 휴식은 방지합니다</span></li>
-                <li><span class="info-title">③ <strong>코트별 수준 배분</strong></span><span>NTRP가 비슷한 선수들끼리 같은 코트에서 경기합니다</span></li>
+                <li><span class="info-title">③ <strong>NTRP 균형</strong></span><span>양 측 페어의 합산 NTRP가 비슷하게 매칭됩니다.</span></li>
                 <li><span class="info-title">④ <strong>팀 내 밸런스</strong></span><span>(1위+4위) vs (2위+3위) 조합으로 팀 강도를 맞춥니다</span></li>
                 <li><span class="info-title">⑤ <strong>페어 다양성</strong></span><span>같은 선수와 같은 코트에 배정되는 빈도를 낮춰 최대한 다양한 조합을 만듭니다</span></li>
             </ul>
@@ -424,6 +424,14 @@
 
     <!-- ③ 대진표 -->
     <div id="panel-schedule" class="panel">
+        <div class="card" style="margin-bottom:14px">
+            <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                <span>🔒 사전 고정 매치 <span style="font-size:11px;color:#a0aec0;font-weight:400;text-transform:none;letter-spacing:0">— 특정 라운드/코트에 인원을 미리 지정</span></span>
+                <button class="btn btn-outline btn-sm" onclick="openPinModal()">+ 고정 매치 추가</button>
+            </div>
+            <div id="pinned-list"></div>
+        </div>
+
         <div class="sched-toolbar">
             <button class="btn btn-green" style="flex:1;padding:13px;font-size:15px;min-width:140px" onclick="genRound()">▶ 다음 라운드</button>
             <button id="btn-gen-all" class="btn btn-teal" style="flex:1;padding:13px;font-size:15px;min-width:140px" onclick="genAllRounds()">⏭ 전체 생성</button>
@@ -462,6 +470,9 @@ let rounds         = [];
 let nextId         = 1;
 let editingId      = null;
 let editingMatchRef = null;
+let pinnedMatches  = [];
+let nextPinId      = 1;
+let editingPinId   = null;
 let cfg = {
     courts: 2, gameType: 'doubles',
     startTime: '10:00', gameMins: 30, endTime: '12:00', warmupMins: 0,
@@ -472,7 +483,7 @@ let cfg = {
 // Persistence
 // ──────────────────────────────────────────────
 function persist() {
-    try { localStorage.setItem('td3', JSON.stringify({ players, rounds, nextId, cfg })); } catch {}
+    try { localStorage.setItem('td3', JSON.stringify({ players, rounds, nextId, cfg, pinnedMatches, nextPinId })); } catch {}
 }
 function hydrate() {
     try {
@@ -481,6 +492,8 @@ function hydrate() {
         players = d.players || [];
         rounds  = d.rounds  || [];
         nextId  = d.nextId  || (players.length ? Math.max(...players.map(p => p.id)) + 1 : 1);
+        pinnedMatches = d.pinnedMatches || [];
+        nextPinId     = d.nextPinId || (pinnedMatches.length ? Math.max(...pinnedMatches.map(p => p.id)) + 1 : 1);
         cfg     = { ...cfg, ...(d.cfg || {}) };
         document.getElementById('s-courts').value    = cfg.courts;
         document.getElementById('s-type').value      = cfg.gameType;
@@ -528,7 +541,7 @@ function goTab(btn, name) {
     btn.classList.add('active');
     document.getElementById('panel-' + name).classList.add('active');
     if (name === 'stats')    renderStats();
-    if (name === 'schedule') renderSchedule();
+    if (name === 'schedule') { renderSchedule(); renderPinnedList(); }
     if (name === 'settings') { updateTimePreview(); updateRatioPreview(); updateRatioCard(); }
 }
 function switchToSchedule() {
@@ -688,8 +701,9 @@ function removePlayer(id) {
 function clearAll() {
     if (!confirm('참가자 전체와 모든 대진표를 삭제할까요?')) return;
     players = []; rounds = []; nextId = 1; editingId = null;
+    pinnedMatches = []; nextPinId = 1;
     persist();
-    renderPlayers(); renderSchedule(); renderStats();
+    renderPlayers(); renderSchedule(); renderStats(); renderPinnedList();
 }
 function editPlayer(id) {
     editingId = id;
@@ -875,58 +889,178 @@ function tryReduceCoPlayMF(playM, mStart, playF, fStart, benchM, benchF) {
     }
 }
 
+// (1+4) vs (2+3) 페어 합산 NTRP 차이 (NTRP 내림차순 정렬 후)
+function teamSumDiff(group) {
+    if (group.length !== 4) return 0;
+    const s = [...group].sort((a, b) => b.ntrp - a.ntrp);
+    return Math.abs((s[0].ntrp + s[3].ntrp) - (s[1].ntrp + s[2].ntrp));
+}
+
+// 합산 NTRP 차이가 0.5 초과면 대기 선수와 교체해 균형 맞추기 시도
+function tryBalanceTeamSum(arr, start, len, bench) {
+    if (len !== 4) return;
+    const group = arr.slice(start, start + len);
+    let bestDiff = teamSumDiff(group);
+    if (bestDiff <= 0.5) return;
+    let bestGi = -1, bestBi = -1;
+    for (let bi = 0; bi < bench.length; bi++) {
+        for (let gi = 0; gi < len; gi++) {
+            const alt = [...group]; alt[gi] = bench[bi];
+            const d = teamSumDiff(alt);
+            if (d < bestDiff) { bestDiff = d; bestGi = gi; bestBi = bi; }
+        }
+    }
+    if (bestGi >= 0) {
+        const tmp = arr[start + bestGi]; arr[start + bestGi] = bench[bestBi]; bench[bestBi] = tmp;
+    }
+}
+
+function tryBalanceTeamSumMF(playM, mStart, playF, fStart, benchM, benchF) {
+    const group = [playM[mStart], playM[mStart+1], playF[fStart], playF[fStart+1]];
+    let bestDiff = teamSumDiff(group);
+    if (bestDiff <= 0.5) return;
+    let bestSwap = null;
+    for (let bi = 0; bi < benchM.length; bi++) {
+        for (let gi = 0; gi < 2; gi++) {
+            const alt = [...group]; alt[gi] = benchM[bi];
+            const d = teamSumDiff(alt);
+            if (d < bestDiff) { bestDiff = d; bestSwap = { src: 'M', gi, bi }; }
+        }
+    }
+    for (let bi = 0; bi < benchF.length; bi++) {
+        for (let gi = 0; gi < 2; gi++) {
+            const alt = [...group]; alt[gi + 2] = benchF[bi];
+            const d = teamSumDiff(alt);
+            if (d < bestDiff) { bestDiff = d; bestSwap = { src: 'F', gi, bi }; }
+        }
+    }
+    if (bestSwap) {
+        if (bestSwap.src === 'M') {
+            const tmp = playM[mStart + bestSwap.gi]; playM[mStart + bestSwap.gi] = benchM[bestSwap.bi]; benchM[bestSwap.bi] = tmp;
+        } else {
+            const tmp = playF[fStart + bestSwap.gi]; playF[fStart + bestSwap.gi] = benchF[bestSwap.bi]; benchF[bestSwap.bi] = tmp;
+        }
+    }
+}
+
 function genDoublesRoundInternal() {
-    if (players.length < 4) { alert('최소 4명이 필요합니다.'); return false; }
     const roundIndex = rounds.length;
-    const males   = prioritySorted('M', roundIndex);
-    const females = prioritySorted('F', roundIndex);
+    const roundId    = roundIndex + 1;
+    const pinsForRound = pinnedMatches.filter(p => p.roundId === roundId);
+    const pinnedIds    = new Set(pinsForRound.flatMap(p => [...p.a, ...p.b]));
+    const usedCourts   = new Set(pinsForRound.map(p => p.court));
+
+    // 가용성 경고
+    const unavail = [...pinnedIds].filter(id => { const p = byId(id); return p && !isAvailable(p, roundIndex); });
+    if (unavail.length) {
+        const names = unavail.map(id => byId(id)?.name).join(', ');
+        if (!confirm(`R${roundId} 고정 매치에 참여 불가 시간 선수가 있습니다: ${names}\n그래도 생성할까요?`)) return false;
+    }
+
+    // 자동 배정 풀 (고정 매치 선수 제외)
+    const males   = prioritySorted('M', roundIndex).filter(p => !pinnedIds.has(p.id));
+    const females = prioritySorted('F', roundIndex).filter(p => !pinnedIds.has(p.id));
     const avail   = males.length + females.length;
-    const maxCourts = Math.min(cfg.courts, Math.floor(avail / 4));
-    if (maxCourts === 0) { alert('이 라운드에 참여 가능한 인원이 부족합니다.'); return false; }
-    const dist = calcCourtDist(maxCourts, males.length, females.length);
-    const mNeeded = dist.mm * 4 + dist.mf * 2;
-    const fNeeded = dist.ff * 4 + dist.mf * 2;
-    const playM  = males.slice(0, mNeeded);
-    const playF  = females.slice(0, fNeeded);
-    const benchM = males.slice(mNeeded);
-    const benchF = females.slice(fNeeded);
 
-    // 페어 다양성 — 같은 조합·동일 4인 반복 모두 낮추기
-    for (let i = 0; i < dist.mm; i++)
-        tryReduceCoPlay(playM, i * 4, 4, benchM);
-    for (let i = 0; i < dist.ff; i++)
-        tryReduceCoPlay(playF, i * 4, 4, benchF);
-    for (let i = 0; i < dist.mf; i++)
-        tryReduceCoPlayMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
+    const autoCourtsAvail = cfg.courts - usedCourts.size;
+    const autoCourts = Math.max(0, Math.min(autoCourtsAvail, Math.floor(avail / 4)));
 
-    const activeIds = new Set([...playM, ...playF].map(p => p.id));
-    // sitting = available this round but not playing
-    const sitting = players.filter(p => isAvailable(p, roundIndex) && !activeIds.has(p.id));
+    if (pinsForRound.length === 0 && autoCourts === 0) {
+        alert('이 라운드에 참여 가능한 인원이 부족합니다.');
+        return false;
+    }
+    if (pinsForRound.length === 0 && players.length < 4) {
+        alert('최소 4명이 필요합니다.');
+        return false;
+    }
+
     const matches = [];
-    let cn = 1;
-    for (let i = 0; i < dist.mm; i++)
-        matches.push(makeMatch(cn++, 'MM', playM.slice(i * 4, i * 4 + 4)));
-    for (let i = 0; i < dist.ff; i++)
-        matches.push(makeMatch(cn++, 'FF', playF.slice(i * 4, i * 4 + 4)));
-    const mfM = playM.slice(dist.mm * 4);
-    const mfF = playF.slice(dist.ff * 4);
-    for (let i = 0; i < dist.mf; i++)
-        matches.push(makeMatch(cn++, 'MF', [...mfM.slice(i * 2, i * 2 + 2), ...mfF.slice(i * 2, i * 2 + 2)]));
-    rounds.push({ id: rounds.length + 1, matches, sit: sitting.map(p => p.id) });
+
+    if (autoCourts > 0) {
+        const dist = calcCourtDist(autoCourts, males.length, females.length);
+        const mNeeded = dist.mm * 4 + dist.mf * 2;
+        const fNeeded = dist.ff * 4 + dist.mf * 2;
+        const playM  = males.slice(0, mNeeded);
+        const playF  = females.slice(0, fNeeded);
+        const benchM = males.slice(mNeeded);
+        const benchF = females.slice(fNeeded);
+
+        for (let i = 0; i < dist.mm; i++)
+            tryReduceCoPlay(playM, i * 4, 4, benchM);
+        for (let i = 0; i < dist.ff; i++)
+            tryReduceCoPlay(playF, i * 4, 4, benchF);
+        for (let i = 0; i < dist.mf; i++)
+            tryReduceCoPlayMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
+
+        // 합산 NTRP 균형 (최대 차이 0.5)
+        for (let i = 0; i < dist.mm; i++)
+            tryBalanceTeamSum(playM, i * 4, 4, benchM);
+        for (let i = 0; i < dist.ff; i++)
+            tryBalanceTeamSum(playF, i * 4, 4, benchF);
+        for (let i = 0; i < dist.mf; i++)
+            tryBalanceTeamSumMF(playM, dist.mm*4 + i*2, playF, dist.ff*4 + i*2, benchM, benchF);
+
+        // 비어있는 코트 번호 순차 할당
+        let cn = 1;
+        const allocateCourt = () => { while (usedCourts.has(cn)) cn++; return cn++; };
+        for (let i = 0; i < dist.mm; i++)
+            matches.push(makeMatch(allocateCourt(), 'MM', playM.slice(i * 4, i * 4 + 4)));
+        for (let i = 0; i < dist.ff; i++)
+            matches.push(makeMatch(allocateCourt(), 'FF', playF.slice(i * 4, i * 4 + 4)));
+        const mfM = playM.slice(dist.mm * 4);
+        const mfF = playF.slice(dist.ff * 4);
+        for (let i = 0; i < dist.mf; i++)
+            matches.push(makeMatch(allocateCourt(), 'MF', [...mfM.slice(i * 2, i * 2 + 2), ...mfF.slice(i * 2, i * 2 + 2)]));
+    }
+
+    // 고정 매치 추가
+    pinsForRound.forEach(p => {
+        matches.push({ court: p.court, type: deriveType(p.a, p.b), a: [...p.a], b: [...p.b], pinned: true });
+    });
+    matches.sort((a, b) => a.court - b.court);
+
+    if (matches.length === 0) { alert('이 라운드에 배정 가능한 매치가 없습니다.'); return false; }
+
+    const activeIds = new Set(matches.flatMap(m => [...m.a, ...m.b]));
+    const sitting = players.filter(p => isAvailable(p, roundIndex) && !activeIds.has(p.id));
+    rounds.push({ id: roundId, matches, sit: sitting.map(p => p.id) });
     return true;
 }
 
 function genSinglesRoundInternal() {
-    if (players.length < 2) { alert('최소 2명이 필요합니다.'); return false; }
     const roundIndex = rounds.length;
-    const sorted = prioritySorted(null, roundIndex);
-    const maxCourts = Math.min(cfg.courts, Math.floor(sorted.length / 2));
-    const active  = sorted.slice(0, maxCourts * 2);
-    const sitting = sorted.slice(maxCourts * 2);
+    const roundId    = roundIndex + 1;
+    const pinsForRound = pinnedMatches.filter(p => p.roundId === roundId);
+    const pinnedIds    = new Set(pinsForRound.flatMap(p => [...p.a, ...p.b]));
+    const usedCourts   = new Set(pinsForRound.map(p => p.court));
+
+    const unavail = [...pinnedIds].filter(id => { const p = byId(id); return p && !isAvailable(p, roundIndex); });
+    if (unavail.length) {
+        const names = unavail.map(id => byId(id)?.name).join(', ');
+        if (!confirm(`R${roundId} 고정 매치에 참여 불가 시간 선수가 있습니다: ${names}\n그래도 생성할까요?`)) return false;
+    }
+
+    const sorted = prioritySorted(null, roundIndex).filter(p => !pinnedIds.has(p.id));
+    const autoCourts = Math.max(0, Math.min(cfg.courts - usedCourts.size, Math.floor(sorted.length / 2)));
+    if (pinsForRound.length === 0 && players.length < 2) { alert('최소 2명이 필요합니다.'); return false; }
+
+    const active  = sorted.slice(0, autoCourts * 2);
     const matches = [];
-    for (let i = 0; i < maxCourts; i++)
-        matches.push(makeMatch(i + 1, null, active.slice(i * 2, i * 2 + 2)));
-    rounds.push({ id: rounds.length + 1, matches, sit: sitting.map(p => p.id) });
+    let cn = 1;
+    const allocateCourt = () => { while (usedCourts.has(cn)) cn++; return cn++; };
+    for (let i = 0; i < autoCourts; i++)
+        matches.push(makeMatch(allocateCourt(), null, active.slice(i * 2, i * 2 + 2)));
+
+    pinsForRound.forEach(p => {
+        matches.push({ court: p.court, type: null, a: [...p.a], b: [...p.b], pinned: true });
+    });
+    matches.sort((a, b) => a.court - b.court);
+
+    if (matches.length === 0) { alert('이 라운드에 배정 가능한 매치가 없습니다.'); return false; }
+
+    const activeIds = new Set(matches.flatMap(m => [...m.a, ...m.b]));
+    const sitting = players.filter(p => isAvailable(p, roundIndex) && !activeIds.has(p.id));
+    rounds.push({ id: roundId, matches, sit: sitting.map(p => p.id) });
     return true;
 }
 
@@ -939,6 +1073,7 @@ function genRound() {
     persist();
     renderSchedule();
     renderStats();
+    renderPinnedList();
     switchToSchedule();
 }
 
@@ -963,6 +1098,7 @@ function genAllRounds() {
     persist();
     renderSchedule();
     renderStats();
+    renderPinnedList();
     switchToSchedule();
 }
 
@@ -973,6 +1109,7 @@ function delLastRound() {
     persist();
     renderSchedule();
     renderStats();
+    renderPinnedList();
 }
 function resetRounds() {
     if (!confirm('모든 대진표 기록을 삭제할까요?')) return;
@@ -980,6 +1117,7 @@ function resetRounds() {
     persist();
     renderSchedule();
     renderStats();
+    renderPinnedList();
 }
 
 // ──────────────────────────────────────────────
@@ -1228,7 +1366,11 @@ function renderSchedule() {
             };
             const aChips = m.a.map((id, pi) => chip('a', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
             const bChips = m.b.map((id, pi) => chip('b', pi, id)).join('<span style="color:#a0aec0;font-size:11px"> · </span>');
-            return `<td class="court-cell" style="white-space:nowrap;text-align:center" onclick="openMatchEdit(${r.id},${mi})" title="선수를 드래그해 위치 교체 / 셀 클릭으로 수정">${pill}${aChips}<span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span>${bChips}</td>`;
+            const lockHTML = m.pinned ? `<span title="고정 매치" style="position:absolute;right:100%;margin-right:4px;font-size:13px;top:50%;transform:translateY(-50%)">🔒</span>` : '';
+            const pillBlock = pill
+                ? `<span style="position:relative;display:inline-block;vertical-align:middle">${lockHTML}${pill}</span>`
+                : (m.pinned ? `<span title="고정 매치" style="margin-right:4px;font-size:13px">🔒</span>` : '');
+            return `<td class="court-cell" style="white-space:nowrap;text-align:center" onclick="openMatchEdit(${r.id},${mi})" title="선수를 드래그해 위치 교체 / 셀 클릭으로 수정">${pillBlock}${aChips}<span style="color:#a0aec0;margin:0 6px;font-size:12px">vs</span>${bChips}</td>`;
         }).join('');
 
         const sitStr = r.sit.length
@@ -1389,6 +1531,131 @@ function closeMatchModal() {
 }
 
 // ──────────────────────────────────────────────
+// Pinned matches
+// ──────────────────────────────────────────────
+function deriveType(a, b) {
+    const all = [...a, ...b];
+    const males = all.filter(id => byId(id)?.gender === 'M').length;
+    const females = all.length - males;
+    if (females === 0) return 'MM';
+    if (males === 0) return 'FF';
+    return 'MF';
+}
+
+function renderPinnedList() {
+    const el = document.getElementById('pinned-list');
+    if (!el) return;
+    if (!pinnedMatches.length) {
+        el.innerHTML = '<div style="font-size:13px;color:#a0aec0;margin-top:8px">아직 고정 매치가 없습니다.</div>';
+        return;
+    }
+    const sorted = [...pinnedMatches].sort((a, b) => a.roundId - b.roundId || a.court - b.court);
+    el.innerHTML = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">' + sorted.map(p => {
+        const aNames = p.a.map(id => byId(id)?.name || '?').join(', ');
+        const bNames = p.b.map(id => byId(id)?.name || '?').join(', ');
+        const type = deriveType(p.a, p.b);
+        const tl = TYPE_LABEL[type];
+        const typePill = tl ? `<span class="type-pill ${tl[0]}">${tl[1]}</span>` : '';
+        const alreadyGen = rounds.some(r => r.id === p.roundId);
+        const warn = alreadyGen ? `<span style="font-size:11px;color:#dd6b20" title="해당 라운드는 이미 생성되었습니다. 적용하려면 마지막 삭제 후 재생성하세요.">⚠ 적용되지 않음</span>` : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;flex-wrap:wrap">
+            <span style="font-weight:700;color:#2b6cb0;min-width:30px">R${p.roundId}</span>
+            <span style="color:#718096;font-size:13px;min-width:48px">코트 ${p.court}</span>
+            ${typePill}
+            <span style="font-size:14px;flex:1;min-width:160px">${esc(aNames)} <span style="color:#a0aec0;font-size:12px">vs</span> ${esc(bNames)}</span>
+            ${warn}
+            <div style="display:flex;gap:6px">
+                <button class="btn btn-outline btn-sm" onclick="openPinModal(${p.id})">수정</button>
+                <button class="btn btn-red btn-sm" onclick="removePinnedMatch(${p.id})">삭제</button>
+            </div>
+        </div>`;
+    }).join('') + '</div>';
+}
+
+function pinOptsHTML(selectedId) {
+    return '<option value="">선수 선택</option>' + players
+        .map(p => `<option value="${p.id}"${p.id === selectedId ? ' selected' : ''}>${esc(p.name)} (${p.gender === 'M' ? '남' : '여'} · ${p.ntrp})</option>`)
+        .join('');
+}
+
+function openPinModal(pinId) {
+    if (!players.length) { alert('먼저 참가자를 등록해주세요.'); return; }
+    editingPinId = pinId ?? null;
+    const existing = pinId ? pinnedMatches.find(p => p.id === pinId) : null;
+    document.getElementById('pin-modal-title-label').textContent = existing ? '수정' : '추가';
+    document.getElementById('pin-round').value = existing?.roundId || (rounds.length + 1);
+    document.getElementById('pin-court').value = existing?.court || 1;
+    const isSingles = cfg.gameType === 'singles';
+    const f = document.getElementById('pin-fields');
+    if (isSingles) {
+        f.innerHTML = `<div class="edit-team-label">A</div>
+            <select class="pin-slot" data-slot="a0">${pinOptsHTML(existing?.a[0])}</select>
+            <div class="edit-vs">vs</div>
+            <div class="edit-team-label">B</div>
+            <select class="pin-slot" data-slot="b0">${pinOptsHTML(existing?.b[0])}</select>`;
+    } else {
+        f.innerHTML = `<div class="edit-team-label">A 팀</div>
+            <div style="display:flex;gap:8px"><select class="pin-slot" data-slot="a0">${pinOptsHTML(existing?.a[0])}</select><select class="pin-slot" data-slot="a1">${pinOptsHTML(existing?.a[1])}</select></div>
+            <div class="edit-vs">vs</div>
+            <div class="edit-team-label">B 팀</div>
+            <div style="display:flex;gap:8px"><select class="pin-slot" data-slot="b0">${pinOptsHTML(existing?.b[0])}</select><select class="pin-slot" data-slot="b1">${pinOptsHTML(existing?.b[1])}</select></div>`;
+    }
+    document.getElementById('pin-modal').style.display = 'flex';
+}
+
+function closePinModal() {
+    editingPinId = null;
+    document.getElementById('pin-modal').style.display = 'none';
+}
+
+function savePinnedMatch() {
+    const roundId = +document.getElementById('pin-round').value;
+    const court = +document.getElementById('pin-court').value;
+    if (!roundId || roundId < 1) { alert('라운드 번호를 확인해주세요.'); return; }
+    if (!court || court < 1 || court > cfg.courts) { alert(`코트 번호는 1~${cfg.courts} 사이여야 합니다.`); return; }
+    const slots = {};
+    document.querySelectorAll('.pin-slot').forEach(sel => slots[sel.dataset.slot] = sel.value ? +sel.value : null);
+    const isSingles = cfg.gameType === 'singles';
+    const a = isSingles ? [slots.a0] : [slots.a0, slots.a1];
+    const b = isSingles ? [slots.b0] : [slots.b0, slots.b1];
+    if (a.some(v => !v) || b.some(v => !v)) { alert('모든 자리에 선수를 지정해주세요.'); return; }
+    const allIds = [...a, ...b];
+    if (new Set(allIds).size !== allIds.length) { alert('동일 선수가 중복 선택되었습니다.'); return; }
+    // 다른 고정 매치와의 선수 중복 검증 (같은 라운드)
+    const conflict = pinnedMatches.find(p => p.id !== editingPinId && p.roundId === roundId && [...p.a, ...p.b].some(id => allIds.includes(id)));
+    if (conflict) { alert(`R${roundId}의 다른 고정 매치(코트 ${conflict.court})에 이미 배정된 선수가 있습니다.`); return; }
+    // 코트 중복 검증
+    const courtConflict = pinnedMatches.find(p => p.id !== editingPinId && p.roundId === roundId && p.court === court);
+    if (courtConflict) { alert(`R${roundId} 코트 ${court}에 이미 고정 매치가 있습니다.`); return; }
+    // 가용성 경고
+    const ri = roundId - 1;
+    const unavail = allIds.filter(id => { const p = byId(id); return p && !isAvailable(p, ri); });
+    if (unavail.length) {
+        const names = unavail.map(id => byId(id)?.name).join(', ');
+        if (!confirm(`다음 선수는 R${roundId} 시간대에 참여 불가합니다: ${names}\n그래도 저장할까요?`)) return;
+    }
+    if (editingPinId) {
+        const existing = pinnedMatches.find(p => p.id === editingPinId);
+        existing.roundId = roundId;
+        existing.court = court;
+        existing.a = a;
+        existing.b = b;
+    } else {
+        pinnedMatches.push({ id: nextPinId++, roundId, court, a, b });
+    }
+    closePinModal();
+    persist();
+    renderPinnedList();
+}
+
+function removePinnedMatch(pinId) {
+    if (!confirm('이 고정 매치를 삭제할까요?')) return;
+    pinnedMatches = pinnedMatches.filter(p => p.id !== pinId);
+    persist();
+    renderPinnedList();
+}
+
+// ──────────────────────────────────────────────
 // Copy schedule as image
 // ──────────────────────────────────────────────
 async function copySchedule() {
@@ -1445,6 +1712,7 @@ document.getElementById('p-avail-until-m').innerHTML = buildMinOpts('');
 renderPlayers();
 renderSchedule();
 renderStats();
+renderPinnedList();
 updateTimePreview();
 updateRatioPreview();
 updateRatioCard();
@@ -1455,6 +1723,32 @@ document.getElementById('p-name').addEventListener('keydown', e => {
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+
+<!-- Pin modal -->
+<div id="pin-modal" class="match-modal-overlay" style="display:none" onclick="if(event.target===this)closePinModal()">
+    <div class="match-modal-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+            <span style="font-weight:700;font-size:16px;color:#1a202c">고정 매치 <span id="pin-modal-title-label">추가</span></span>
+            <button onclick="closePinModal()" style="background:none;border:none;font-size:20px;color:#a0aec0;cursor:pointer;line-height:1">×</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:14px">
+            <div class="field" style="flex:1">
+                <label>라운드</label>
+                <input id="pin-round" type="number" min="1" value="1">
+            </div>
+            <div class="field" style="flex:1">
+                <label>코트</label>
+                <input id="pin-court" type="number" min="1" value="1">
+            </div>
+        </div>
+        <div id="pin-fields"></div>
+        <div style="font-size:11px;color:#718096;margin-top:10px">※ 매치 타입(남복/여복/혼합)은 선수 성별로 자동 결정됩니다.</div>
+        <div style="display:flex;gap:10px;margin-top:22px">
+            <button class="btn btn-primary" style="flex:1" onclick="savePinnedMatch()">저장</button>
+            <button class="btn btn-gray" style="flex:1" onclick="closePinModal()">취소</button>
+        </div>
+    </div>
+</div>
 
 <!-- Match edit modal -->
 <div id="match-modal" class="match-modal-overlay" style="display:none" onclick="if(event.target===this)closeMatchModal()">
